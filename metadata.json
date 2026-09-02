@@ -1,0 +1,6 @@
+{
+  "name": "Sqbe HRMS",
+  "description": "Enterprise SaaS HRMS featuring multi-tenancy, live module assignment, HR lifecycle, automated payroll engine, geo-fenced attendance, performance OKRs, and recruitment pipelines.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

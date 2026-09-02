@@ -1,0 +1,668 @@
+// Sqbe HRMS - Prisma Schema for PostgreSQL
+// Matches src/types/index.ts field-for-field with application-layer tenant isolation
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// 1. TENANCY & ORGANIZATIONS
+// -------------------------------------------------------------
+
+enum OrganizationStatus {
+  Active
+  Inactive
+  Trial
+}
+
+enum BillingPlan {
+  Enterprise
+  Professional
+  Growth
+}
+
+model Organization {
+  id            String             @id @default(uuid())
+  name          String
+  slug          String             @unique
+  industry      String
+  employeeCount Int                @default(0)
+  activeUsers   Int                @default(0)
+  status        OrganizationStatus @default(Active)
+  joinedDate    DateTime           @default(now())
+  contactEmail  String
+  billingPlan   BillingPlan        @default(Enterprise)
+  logoUrl       String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  // Relationships
+  users               User[]
+  modules             OrganizationModule[]
+  employees           Employee[]
+  departments         Department[]
+  designations        Designation[]
+  shifts              WorkShift[]
+  geofences           GeofenceLocation[]
+  attendanceRecords   AttendanceRecord[]
+  regularizations     RegularizationRequest[]
+  leaveRequests       LeaveRequest[]
+  salaryStructures    SalaryStructure[]
+  payrollRuns         PayrollRun[]
+  payslips            Payslip[]
+  performanceGoals    PerformanceGoal[]
+  performanceReviews PerformanceReview[]
+  jobPostings         JobPosting[]
+  candidates          Candidate[]
+  interviews          Interview[]
+  notifications       NotificationItem[]
+  auditLogs           AuditLogEntry[]
+  files               FileMetadata[]
+
+  @@map("organizations")
+}
+
+model OrganizationModule {
+  id        String   @id @default(uuid())
+  orgId     String
+  moduleId  String   // hr, payroll, attendance, performance, recruitment, leave, ess, engagement, marketplace, expense
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, moduleId])
+  @@index([orgId])
+  @@map("organization_modules")
+}
+
+// -------------------------------------------------------------
+// 2. USERS & AUTHENTICATION
+// -------------------------------------------------------------
+
+enum Role {
+  SuperAdmin     @map("Super Admin")
+  Admin          @map("Admin")
+  OrgAdmin       @map("Org Admin")
+  Manager        @map("Manager")
+  TeamLead       @map("Team Lead")
+  Executive      @map("Executive")
+  Employee       @map("Employee")
+  HrManager      @map("HR Manager")
+  PayrollManager @map("Payroll Manager")
+  Recruiter      @map("Recruiter")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  orgId        String?
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         String    // Super Admin, Admin, Manager, Team Lead, Executive, etc.
+  avatar       String?
+  department   String?
+  designation  String?
+  employeeId   String?   @unique
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  employee     Employee?     @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  refreshTokens RefreshToken[]
+  passwordResets PasswordResetToken[]
+
+  @@index([orgId])
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// -------------------------------------------------------------
+// 3. CORE HR ENTITIES
+// -------------------------------------------------------------
+
+model Employee {
+  id                String   @id @default(uuid())
+  orgId             String
+  employeeCode      String
+  firstName         String
+  lastName          String
+  avatar            String?
+  email             String
+  phone             String
+  dob               String?
+  gender            String?
+  address           String?
+  emergencyContact  Json?    // { name, relationship, phone }
+  department        String
+  designation       String
+  managerId         String?
+  managerName       String?
+  reportingManager  String?
+  employmentType    String   @default("Full-Time")
+  joiningDate       String
+  workLocation      String?
+  location          String?
+  status            String   @default("Active") // Active, Probation, On Leave, Terminated
+  annualCtc         Float    @default(0.0)
+  monthlyGross      Float?   @default(0.0)
+  bankDetails       Json?    // { bankName, maskedAccountNumber, ifscCode }
+  documents         Json?    // DocumentItem[]
+  lifecycleHistory  Json?    // LifecycleEvent[]
+  shiftId           String?
+  performanceRating Float?   @default(4.0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User?
+
+  @@unique([orgId, employeeCode])
+  @@index([orgId])
+  @@index([email])
+  @@map("employees")
+}
+
+model Department {
+  id             String   @id @default(uuid())
+  orgId          String
+  name           String
+  code           String
+  headEmployeeId String?
+  headName       String?
+  employeeCount  Int      @default(0)
+  budgetInr      Float    @default(0.0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, code])
+  @@index([orgId])
+  @@map("departments")
+}
+
+model Designation {
+  id                 String   @id @default(uuid())
+  orgId              String
+  title              String
+  department         String
+  level              String
+  minExperienceYears Float    @default(0.0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("designations")
+}
+
+model WorkShift {
+  id                   String   @id @default(uuid())
+  orgId                String
+  name                 String
+  startTime            String   // "09:00"
+  endTime              String   // "18:00"
+  graceMinutes         Int      @default(15)
+  breakDurationMinutes Int      @default(60)
+  workingDays          Json     // ["Monday", "Tuesday", ...]
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("work_shifts")
+}
+
+// -------------------------------------------------------------
+// 4. ATTENDANCE & GEOFENCING
+// -------------------------------------------------------------
+
+model GeofenceLocation {
+  id              String   @id @default(uuid())
+  orgId           String
+  name            String
+  address         String?
+  latitude        Float
+  longitude       Float
+  radiusMeters    Float    @default(200.0)
+  policy          String   @default("Allow with Warning") // Block, Allow with Warning, Strict Block
+  isRemoteAllowed Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("geofence_locations")
+}
+
+model AttendanceRecord {
+  id                String   @id @default(uuid())
+  orgId             String
+  employeeId        String
+  employeeName      String
+  department        String
+  date              String   // YYYY-MM-DD
+  clockInTime       String?  // HH:mm:ss
+  clockOutTime      String?  // HH:mm:ss
+  workHours         Float?   @default(0.0)
+  totalWorkingHours Float?   @default(0.0)
+  overtimeHours     Float?   @default(0.0)
+  status            String   @default("Present") // Present, Absent, Late, Half Day, On Leave
+  geofenceStatus    String?  // Inside Allowed Location, Outside Authorized Location
+  breakMinutes      Int?     @default(0)
+  punchLocation     Json?    // { latitude, longitude, accuracyMeters, distanceFromOfficeMeters, officeGeofenceName, geofenceStatus, deviceInfo }
+  withinGeofence    Boolean? @default(true)
+  distanceMeters    Float?   @default(0.0)
+  verifiedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, employeeId, date])
+  @@index([orgId])
+  @@index([employeeId])
+  @@map("attendance_records")
+}
+
+model RegularizationRequest {
+  id                String   @id @default(uuid())
+  orgId             String
+  employeeId        String
+  employeeName      String
+  date              String
+  reason            String
+  requestedClockIn  String?
+  requestedClockOut String?
+  status            String   @default("Pending") // Pending, Approved, Rejected
+  approverRole      String?
+  approverName      String?
+  comment           String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("regularization_requests")
+}
+
+model LeaveRequest {
+  id                     String   @id @default(uuid())
+  orgId                  String
+  employeeId             String
+  employeeName           String
+  employeeAvatar         String?
+  department             String
+  leaveType              String   // Earned Leave (EL), Casual Leave (CL), Sick Leave (SL), etc.
+  startDate              String
+  endDate                String
+  days                   Float    @default(1.0)
+  reason                 String
+  appliedDate            String
+  status                 String   @default("Pending") // Pending, Approved, Rejected
+  approverName           String?
+  approverRole           String?
+  approvedOrRejectedDate String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("leave_requests")
+}
+
+// -------------------------------------------------------------
+// 5. PAYROLL & COMPENSATION
+// -------------------------------------------------------------
+
+model SalaryStructure {
+  id                         String   @id @default(uuid())
+  orgId                      String
+  name                       String
+  description                String
+  basicPercentage            Float    @default(40.0)
+  hraPercentage              Float    @default(20.0)
+  specialAllowancePercentage Float    @default(30.0)
+  conveyanceFixed            Float    @default(1600.0)
+  medicalAllowanceFixed      Float    @default(1250.0)
+  pfRate                     Float    @default(12.0)
+  esiRate                    Float    @default(0.75)
+  professionalTaxFixed       Float    @default(200.0)
+  isDefault                  Boolean  @default(true)
+  effectiveFrom              DateTime @default(now()) // Versioning support for historical accuracy
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, effectiveFrom])
+  @@map("salary_structures")
+}
+
+model PayrollRun {
+  id                 String   @id @default(uuid())
+  orgId              String
+  monthYear          String   // "2026-08" or "August 2026"
+  status             String   @default("Draft") // Draft, Calculated, Approved, Disbursed
+  totalEmployees     Int      @default(0)
+  processedEmployees Int      @default(0)
+  totalGrossPay      Float    @default(0.0)
+  totalDeductions    Float    @default(0.0)
+  totalTaxes         Float    @default(0.0)
+  totalNetPay        Float    @default(0.0)
+  processedDate      String?
+  approvedBy         String?
+  currentStep        Int      @default(1)
+  disclaimer         String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  payslips     Payslip[]
+
+  @@unique([orgId, monthYear])
+  @@index([orgId])
+  @@map("payroll_runs")
+}
+
+model Payslip {
+  id               String   @id @default(uuid())
+  payrollRunId     String
+  orgId            String
+  employeeId       String
+  employeeName     String
+  employeeCode     String
+  designation      String
+  department       String
+  bankName         String
+  maskedAccount    String
+  monthYear        String
+  workingDays      Int      @default(30)
+  daysPresent      Int      @default(30)
+  paidLeaves       Int      @default(0)
+  lossOfPayDays    Int      @default(0)
+  basicSalary      Float    @default(0.0)
+  hra              Float    @default(0.0)
+  specialAllowance Float    @default(0.0)
+  bonusOrIncentive Float    @default(0.0)
+  grossEarnings    Float    @default(0.0)
+  providentFund    Float    @default(0.0)
+  esi              Float    @default(0.0)
+  professionalTax  Float    @default(0.0)
+  tdsIncomeTax     Float    @default(0.0)
+  totalDeductions  Float    @default(0.0)
+  netSalary        Float    @default(0.0)
+  pdfFileKey       String?
+  generatedDate    String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  payrollRun   PayrollRun   @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([payrollRunId])
+  @@index([employeeId])
+  @@map("payslips")
+}
+
+// -------------------------------------------------------------
+// 6. PERFORMANCE & OKRS
+// -------------------------------------------------------------
+
+model PerformanceGoal {
+  id              String   @id @default(uuid())
+  orgId           String
+  employeeId      String?
+  employeeName    String
+  department      String?
+  title           String
+  description     String?
+  category        String   @default("OKR") // Individual, Team, Department, OKR
+  targetMetric    String
+  currentProgress Float    @default(0.0)
+  weightage       Float    @default(25.0)
+  startDate       String?
+  dueDate         String
+  priority        String   @default("Medium") // Low, Medium, High, Critical
+  status          String   @default("On Track") // On Track, At Risk, Behind, Completed
+  score           Float?   @default(0.0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("performance_goals")
+}
+
+model PerformanceReview {
+  id                  String   @id @default(uuid())
+  orgId               String
+  employeeId          String?
+  employeeName        String
+  reviewerName        String?
+  cycle               String?
+  reviewCycle         String?
+  rating              Float?   @default(0.0)
+  feedback            String?
+  department          String?
+  currentStage        String   @default("Self Evaluation")
+  isCompleted         Boolean  @default(false)
+  selfRating          Float?   @default(0.0)
+  selfComments        String?
+  managerRating       Float?   @default(0.0)
+  managerComments     String?
+  managerStrengths    String?
+  managerImprovements String?
+  peerRating          Float?   @default(0.0)
+  peerComments        String?
+  hrRating            Float?   @default(0.0)
+  hrComments          String?
+  finalScore          Float?   @default(0.0)
+  finalRecommendation String?  @default("Exceeds Expectations")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("performance_reviews")
+}
+
+// -------------------------------------------------------------
+// 7. RECRUITMENT & ATS PIPELINE
+// -------------------------------------------------------------
+
+model JobPosting {
+  id             String   @id @default(uuid())
+  orgId          String
+  title          String
+  department     String
+  location       String
+  employmentType String   @default("Full-Time")
+  experience     String?
+  salaryRange    String?
+  description    String?
+  skillsRequired Json?    // string[]
+  qualifications String?
+  hiringManager  String?
+  status         String   @default("Published") // Published, Draft, Closed
+  openings       Int      @default(1)
+  appliedCount   Int      @default(0)
+  postedDate     String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("job_postings")
+}
+
+model Candidate {
+  id               String   @id @default(uuid())
+  orgId            String
+  jobId            String?
+  jobTitle         String
+  name             String
+  email            String
+  phone            String
+  currentCompany   String
+  experienceYears  Float    @default(0.0)
+  skills           Json?    // string[]
+  expectedSalary   String?
+  noticePeriodDays Int      @default(30)
+  location         String?
+  source           String   @default("LinkedIn")
+  stage            String   @default("Screening") // Applied, Screening, Shortlisted, Technical, HR Round, Offer, Hired, Rejected
+  resumeFileKey    String?
+  resumeFileName   String?
+  appliedDate      String
+  rating           Float    @default(4.0)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  interviews   Interview[]
+
+  @@index([orgId])
+  @@index([jobId])
+  @@map("candidates")
+}
+
+model Interview {
+  id              String   @id @default(uuid())
+  orgId           String
+  candidateId     String?
+  candidateName   String
+  jobTitle        String?
+  round           String?
+  roundType       String   @default("Technical Round 1")
+  interviewerName String
+  scheduledAt     String?
+  durationMinutes Int      @default(45)
+  meetingLink     String?
+  feedback        String?
+  score           Float?   @default(0.0)
+  status          String   @default("Scheduled") // Scheduled, Completed, Cancelled
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  candidate    Candidate?   @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
+  @@map("interviews")
+}
+
+// -------------------------------------------------------------
+// 8. NOTIFICATIONS & AUDIT TRAIL
+// -------------------------------------------------------------
+
+model NotificationItem {
+  id        String   @id @default(uuid())
+  orgId     String
+  title     String
+  message   String
+  type      String   @default("system")
+  timestamp String
+  isRead    Boolean  @default(false)
+  actionUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("notifications")
+}
+
+model AuditLogEntry {
+  id            String   @id @default(uuid())
+  orgId         String
+  timestamp     DateTime @default(now())
+  userId        String?
+  userName      String
+  userRole      String
+  action        String
+  module        String
+  recordName    String
+  previousValue String?
+  newValue      String?
+  ipAddress     String   @default("127.0.0.1")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  // Insert-only table: no updates, no deletes allowed
+  @@index([orgId])
+  @@index([timestamp])
+  @@map("audit_log_entries")
+}
+
+// -------------------------------------------------------------
+// 9. FILE METADATA & SIGNED ACCESS
+// -------------------------------------------------------------
+
+model FileMetadata {
+  id           String   @id @default(uuid())
+  orgId        String
+  fileKey      String   @unique
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  category     String   // resume, payslip, document, policy
+  uploadedById String?
+  isVerified   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("file_metadata")
+}
