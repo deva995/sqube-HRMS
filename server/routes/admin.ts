@@ -12,6 +12,39 @@ const UpdateModulesSchema = z.object({
   enabledModuleIds: z.array(z.string()),
 });
 
+const CreateOrganizationSchema = z.object({
+  name: z.string().min(2),
+  slug: z.string().min(2),
+  industry: z.string().optional(),
+  contactEmail: z.string().email(),
+  billingPlan: z.enum(['Enterprise', 'Professional', 'Growth']).default('Enterprise'),
+  logoUrl: z.string().optional(),
+  enabledModules: z.array(z.string()).optional(),
+});
+
+const CreateUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+  password: z.string().min(6),
+  role: z.enum([
+    'Super Admin',
+    'Admin',
+    'Org Admin',
+    'Manager',
+    'Team Lead',
+    'Executive',
+    'Employee',
+    'HR Manager',
+    'Payroll Manager',
+    'Recruiter',
+  ]),
+  orgId: z.string().optional(),
+  employeeId: z.string().optional(),
+  department: z.string().optional(),
+  designation: z.string().optional(),
+  avatar: z.string().optional(),
+});
+
 /**
  * GET /api/v1/admin/organizations
  */
@@ -29,6 +62,76 @@ router.get('/organizations', authenticate, async (req: AuthenticatedRequest, res
     next(error);
   }
 });
+
+/**
+ * POST /api/v1/admin/organizations
+ * Super Admin Tenant Provisioning
+ */
+router.post(
+  '/organizations',
+  authenticate,
+  requireRole(['Super Admin']),
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const parsed = CreateOrganizationSchema.parse(req.body);
+      const repo = getRepository('all', 'Super Admin');
+
+      const org = await repo.createOrganization({
+        ...parsed,
+        enabledModules: parsed.enabledModules as ModuleId[],
+      });
+
+      await logAuditEvent(req, {
+        action: 'CREATE_ORGANIZATION',
+        module: 'admin',
+        recordName: `${org.name} (${org.id})`,
+      });
+
+      res.status(201).json({
+        success: true,
+        data: org,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/v1/admin/users
+ * Super Admin or Org Admin User Creation
+ */
+router.post(
+  '/users',
+  authenticate,
+  requireRole(['Super Admin', 'Admin', 'Org Admin', 'HR Manager']),
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const parsed = CreateUserSchema.parse(req.body);
+      const targetOrgId = req.user?.role === 'Super Admin' ? (parsed.orgId || req.user.orgId) : req.user?.orgId;
+      const repo = getRepository(targetOrgId, req.user?.role);
+
+      const user = await repo.createUser({
+        ...parsed,
+        orgId: targetOrgId,
+        role: parsed.role as any,
+      });
+
+      await logAuditEvent(req, {
+        action: 'CREATE_USER',
+        module: 'admin',
+        recordName: `${user.name} (${user.email}) [${user.role}] in ${user.orgId}`,
+      });
+
+      res.status(201).json({
+        success: true,
+        data: user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 /**
  * PATCH /api/v1/admin/organizations/:orgId/modules

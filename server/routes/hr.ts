@@ -197,6 +197,38 @@ router.get('/departments', async (req: AuthenticatedRequest, res: Response, next
 });
 
 /**
+ * POST /api/v1/hr/departments
+ */
+router.post(
+  '/departments',
+  requireRole(['Admin', 'HR Manager', 'Super Admin']),
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const schema = z.object({
+        name: z.string().min(2),
+        code: z.string().min(1),
+        headEmployeeId: z.string().optional(),
+        headName: z.string().optional(),
+        budgetInr: z.number().optional(),
+      });
+      const parsed = schema.parse(req.body);
+      const repo = getRepository(req.user?.orgId, req.user?.role);
+      const created = await repo.createDepartment(parsed);
+
+      await logAuditEvent(req, {
+        action: 'CREATE_DEPARTMENT',
+        module: 'hr',
+        recordName: `${created.name} (${created.code})`,
+      });
+
+      res.status(201).json({ success: true, data: created });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
  * GET /api/v1/hr/designations
  */
 router.get('/designations', async (req: AuthenticatedRequest, res: Response, next) => {
@@ -210,6 +242,37 @@ router.get('/designations', async (req: AuthenticatedRequest, res: Response, nex
 });
 
 /**
+ * POST /api/v1/hr/designations
+ */
+router.post(
+  '/designations',
+  requireRole(['Admin', 'HR Manager', 'Super Admin']),
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const schema = z.object({
+        title: z.string().min(2),
+        department: z.string().min(1),
+        level: z.number().min(1),
+        minExperienceYears: z.number().optional(),
+      });
+      const parsed = schema.parse(req.body);
+      const repo = getRepository(req.user?.orgId, req.user?.role);
+      const created = await repo.createDesignation(parsed);
+
+      await logAuditEvent(req, {
+        action: 'CREATE_DESIGNATION',
+        module: 'hr',
+        recordName: `${created.title} - ${created.department}`,
+      });
+
+      res.status(201).json({ success: true, data: created });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
  * GET /api/v1/hr/shifts
  */
 router.get('/shifts', async (req: AuthenticatedRequest, res: Response, next) => {
@@ -221,5 +284,38 @@ router.get('/shifts', async (req: AuthenticatedRequest, res: Response, next) => 
     next(error);
   }
 });
+
+/**
+ * POST /api/v1/hr/shifts
+ */
+router.post(
+  '/shifts',
+  requireRole(['Admin', 'HR Manager', 'Super Admin']),
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const schema = z.object({
+        name: z.string().min(2),
+        startTime: z.string().min(1),
+        endTime: z.string().min(1),
+        graceMinutes: z.number().optional(),
+        breakDurationMinutes: z.number().optional(),
+        workingDays: z.array(z.string()).optional(),
+      });
+      const parsed = schema.parse(req.body);
+      const repo = getRepository(req.user?.orgId, req.user?.role);
+      const created = await repo.createShift(parsed);
+
+      await logAuditEvent(req, {
+        action: 'CREATE_WORK_SHIFT',
+        module: 'hr',
+        recordName: `${created.name} (${created.startTime} - ${created.endTime})`,
+      });
+
+      res.status(201).json({ success: true, data: created });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 export default router;

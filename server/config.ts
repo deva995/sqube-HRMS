@@ -7,8 +7,12 @@ const isProduction = process.env.NODE_ENV === 'production';
 const jwtSecret = process.env.JWT_SECRET || (isProduction ? '' : 'sqbe_hrms_super_secure_access_token_jwt_secret_key_2026');
 const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || (isProduction ? '' : 'sqbe_hrms_super_secure_refresh_token_jwt_secret_key_2026');
 
-if (isProduction && (!jwtSecret || !jwtRefreshSecret)) {
-  console.error('FATAL: JWT_SECRET and JWT_REFRESH_SECRET must be securely set in environment variables in production.');
+if (isProduction && (!jwtSecret || !jwtRefreshSecret || !process.env.DATABASE_URL)) {
+  const missing = [];
+  if (!jwtSecret) missing.push('JWT_SECRET');
+  if (!jwtRefreshSecret) missing.push('JWT_REFRESH_SECRET');
+  if (!process.env.DATABASE_URL) missing.push('DATABASE_URL');
+  throw new Error(`FATAL: Mandatory production environment variables missing: ${missing.join(', ')}`);
 }
 
 export const config = {

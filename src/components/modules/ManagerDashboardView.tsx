@@ -58,7 +58,7 @@ export const ManagerDashboardView: React.FC = () => {
   const myTeam = employees.filter((e) => e.department.includes('Engineering') || e.department.includes('Product'));
   const pendingLeaves = leaveRequests.filter((r) => r.status === 'Pending');
   const pendingRegularizations = regularizationRequests.filter((r) => r.status === 'Pending');
-  const myTeamGoals = goals.filter((g) => g.department === 'Engineering' || g.type === 'Team');
+  const myTeamGoals = goals.filter((g) => g.department === 'Engineering' || (g as any).type === 'Team' || g.category === 'Team');
   const upcomingInterviews = interviews.filter((i) => i.status === 'Scheduled');
 
   // Modal states for manager actions
@@ -344,7 +344,7 @@ export const ManagerDashboardView: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-slate-900">{req.employeeName}</span>
                         <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                          {req.type}
+                          {req.leaveType || (req as any).type}
                         </span>
                         <span className="text-[10px] text-slate-400 font-mono">
                           {req.days} Day{req.days > 1 ? 's' : ''}

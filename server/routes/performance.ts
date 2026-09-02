@@ -98,4 +98,85 @@ router.get('/reviews', async (req: AuthenticatedRequest, res: Response, next) =>
   }
 });
 
+/**
+ * POST /api/v1/performance/reviews
+ */
+router.post(
+  '/reviews',
+  requireRole(['Admin', 'HR Manager', 'Manager', 'Super Admin']),
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const schema = z.object({
+        employeeId: z.string().optional(),
+        employeeName: z.string().min(1),
+        reviewerName: z.string().optional(),
+        cycle: z.string().optional(),
+        rating: z.number().optional(),
+        feedback: z.string().optional(),
+        department: z.string().optional(),
+        currentStage: z.number().optional(),
+        selfRating: z.number().optional(),
+        selfComments: z.string().optional(),
+        managerRating: z.number().optional(),
+        managerComments: z.string().optional(),
+      });
+      const parsed = schema.parse(req.body);
+      const repo = getRepository(req.user?.orgId, req.user?.role);
+      const created = await repo.createReview(parsed);
+
+      await logAuditEvent(req, {
+        action: 'SUBMIT_PERFORMANCE_REVIEW',
+        module: 'performance',
+        recordName: `Review for ${created.employeeName} (${created.cycle})`,
+      });
+
+      res.status(201).json({ success: true, data: created });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * PATCH /api/v1/performance/reviews/:id
+ */
+router.patch(
+  '/reviews/:id',
+  requireRole(['Admin', 'HR Manager', 'Manager', 'Super Admin']),
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const schema = z.object({
+        currentStage: z.union([z.string(), z.number()]).optional(),
+        rating: z.number().optional(),
+        feedback: z.string().optional(),
+        managerRating: z.number().optional(),
+        managerComments: z.string().optional(),
+        isCompleted: z.boolean().optional(),
+        finalScore: z.number().optional(),
+        finalRecommendation: z.string().optional(),
+      });
+      const parsed = schema.parse(req.body);
+      const stageStr = typeof parsed.currentStage === 'number'
+        ? (['Self', 'Manager', 'Peer', 'HR', 'Final'][parsed.currentStage - 1] || 'Self')
+        : parsed.currentStage;
+
+      const repo = getRepository(req.user?.orgId, req.user?.role);
+      const updated = await repo.updateReview(req.params.id, {
+        ...parsed,
+        currentStage: stageStr,
+      });
+
+      await logAuditEvent(req, {
+        action: 'UPDATE_PERFORMANCE_REVIEW',
+        module: 'performance',
+        recordName: `Review ${req.params.id} for ${updated.employeeName}`,
+      });
+
+      res.json({ success: true, data: updated });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;

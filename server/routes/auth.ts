@@ -317,4 +317,74 @@ router.post('/reset-password', async (req, res, next) => {
   }
 });
 
+const ResetPasswordConfirmSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z.string().min(6, 'Password must be at least 6 characters long'),
+});
+
+/**
+ * POST /api/v1/auth/reset-password/confirm
+ * Validates reset token and sets new password hash
+ */
+router.post(['/reset-password/confirm', '/reset-password-confirm'], async (req, res, next) => {
+  try {
+    const { token, newPassword } = ResetPasswordConfirmSchema.parse(req.body);
+
+    const resetEntry = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash: token },
+    });
+
+    if (!resetEntry || resetEntry.isUsed || resetEntry.expiresAt < new Date()) {
+      throw new AppError('Password reset link is invalid, expired, or already used.', 400, 'INVALID_RESET_TOKEN');
+    }
+
+    let decoded: { userId: string };
+    try {
+      decoded = jwt.verify(token, config.jwt.secret) as { userId: string };
+    } catch {
+      throw new AppError('Invalid or malformed reset token.', 400, 'INVALID_RESET_TOKEN');
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: decoded.userId },
+        data: { passwordHash: newHash, updatedAt: new Date() },
+      }),
+      prisma.passwordResetToken.update({
+        where: { id: resetEntry.id },
+        data: { isUsed: true },
+      }),
+      // Invalidate existing sessions
+      prisma.refreshToken.updateMany({
+        where: { userId: decoded.userId },
+        data: { isRevoked: true },
+      }),
+    ]);
+
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+
+    await logAuditEvent(
+      {
+        user: { userId: decoded.userId, email: user?.email || '', role: user?.role || 'Employee', orgId: user?.orgId || 'org-acro', name: user?.name || 'User' },
+        headers: req.headers,
+        socket: req.socket,
+      } as any,
+      {
+        action: 'PASSWORD_RESET_SUCCESS',
+        module: 'auth',
+        recordName: user?.email || 'User',
+      }
+    );
+
+    res.json({
+      success: true,
+      data: { message: 'Password successfully reset. Please log in with your new password.' },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

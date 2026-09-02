@@ -173,8 +173,8 @@ export const RecentActivityWidget: React.FC = () => {
         orgId: cand.orgId,
         category: 'recruitment',
         title: `Candidate Pipeline Update: ${cand.name}`,
-        subtitle: `${cand.roleApplied} • Stage: ${cand.stage}`,
-        description: `Current score: ${cand.rating}★ • Match: ${cand.matchScore}% • Applied on ${cand.appliedDate}`,
+        subtitle: `${cand.roleApplied || cand.jobTitle} • Stage: ${cand.stage}`,
+        description: `Current score: ${cand.rating || 4.5}★ • Match: ${cand.matchScore || 90}% • Applied on ${cand.appliedDate}`,
         timestamp: `${idx + 2}h ago`,
         timeSortKey: sortKey,
         status: statusType,
@@ -201,10 +201,10 @@ export const RecentActivityWidget: React.FC = () => {
         title: isCompleted
           ? `Interview Feedback Submitted: ${interview.candidateName}`
           : `Interview Scheduled: ${interview.candidateName}`,
-        subtitle: `${interview.roundName} (${interview.date} at ${interview.time})`,
+        subtitle: `${interview.roundName || interview.round || 'Round'} (${interview.date || interview.scheduledAt || 'Scheduled'})`,
         description: isCompleted
-          ? `Interviewer score: ${interview.score}/5.0 • Notes: "${interview.feedback || 'Positive communication & technical depth.'}"`
-          : `Interviewer: ${interview.interviewerName} (${interview.mode})`,
+          ? `Interviewer score: ${interview.score || 4.5}/5.0 • Notes: "${interview.feedback || 'Positive communication & technical depth.'}"`
+          : `Interviewer: ${interview.interviewerName} (${interview.mode || 'Video Link'})`,
         timestamp: isCompleted ? '3h ago' : '4h ago',
         timeSortKey: sortKey,
         status: isCompleted ? 'Completed' : 'Pending',

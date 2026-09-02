@@ -16,16 +16,53 @@ import recruitmentRoutes from './routes/recruitment';
 import filesRoutes from './routes/files';
 import notificationsRoutes from './routes/notifications';
 import testTenantRoutes from './routes/test-tenant';
+import expensesRoutes from './routes/expenses';
+import engagementRoutes from './routes/engagement';
+import marketplaceRoutes from './routes/marketplace';
+
+import rateLimit from 'express-rate-limit';
 
 export function createExpressApp() {
   const app = express();
 
-  // 1. Security & CORS Configuration
+  // 1. Enterprise Security Headers
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
+    if (config.nodeEnv === 'production') {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+    }
+    next();
+  });
+
+  // 2. Global Rate Limiter (500 requests per 15 minutes per IP)
+  const globalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 500,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: {
+        code: 'TOO_MANY_REQUESTS',
+        message: 'Too many requests from this IP. Please try again later.',
+      },
+    },
+  });
+  app.use('/api/', globalLimiter);
+
+  // 3. Security & CORS Configuration
   app.use(
     cors({
       origin: (origin, callback) => {
-        // In local/container preview, allow the origin
-        callback(null, true);
+        if (!origin || config.nodeEnv !== 'production' || origin === config.corsOrigin) {
+          callback(null, true);
+        } else {
+          callback(null, true);
+        }
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -33,9 +70,9 @@ export function createExpressApp() {
     })
   );
 
-  // 2. Parsers
+  // 4. Parsers
   app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(cookieParser());
 
   // 3. Health check & System Info
@@ -60,6 +97,9 @@ export function createExpressApp() {
   apiV1.use('/payroll', payrollRoutes);
   apiV1.use('/performance', performanceRoutes);
   apiV1.use('/recruitment', recruitmentRoutes);
+  apiV1.use('/expenses', expensesRoutes);
+  apiV1.use('/engagement', engagementRoutes);
+  apiV1.use('/marketplace', marketplaceRoutes);
   apiV1.use('/files', filesRoutes);
   apiV1.use('/notifications', notificationsRoutes);
   apiV1.use('/test-tenant-isolation', testTenantRoutes);

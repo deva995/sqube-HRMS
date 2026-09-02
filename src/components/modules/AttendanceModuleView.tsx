@@ -87,7 +87,7 @@ export const AttendanceModuleView: React.FC = () => {
           setPunchFeedback({
             success: res.success,
             message: res.message,
-            distance: res.distanceMeters ? formatDistance(res.distanceMeters) : undefined,
+            distance: (res as any).distanceMeters ? formatDistance((res as any).distanceMeters) : undefined,
           });
 
           confetti({

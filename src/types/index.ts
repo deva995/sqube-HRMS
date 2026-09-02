@@ -27,6 +27,8 @@ export type ModuleId =
   | 'marketplace'
   | 'expense';
 
+export type ActivityCategory = 'hr' | 'payroll' | 'attendance' | 'performance' | 'recruitment' | 'leave' | 'system' | 'security';
+
 export interface ModuleDefinition {
   id: ModuleId;
   name: string;
@@ -36,6 +38,89 @@ export interface ModuleDefinition {
   isFullyImplemented: boolean;
   comingSoonBadge?: boolean;
 }
+
+export const ALL_MODULES: ModuleDefinition[] = [
+  {
+    id: 'hr',
+    name: 'HR Core & Directory',
+    category: 'Core',
+    description: 'Complete employee lifecycle, org structure, document repository, and headcount analytics.',
+    icon: 'Users',
+    isFullyImplemented: true,
+  },
+  {
+    id: 'payroll',
+    name: 'Payroll & Statutory',
+    category: 'Core',
+    description: 'Multi-step salary calculation, statutory deductions preview, approval workflows, and PDF payslips.',
+    icon: 'IndianRupee',
+    isFullyImplemented: true,
+  },
+  {
+    id: 'attendance',
+    name: 'Attendance & Geofencing',
+    category: 'Operations',
+    description: 'Real-time GPS geofenced clock-in, shift management, biometric simulation, and regularization.',
+    icon: 'MapPin',
+    isFullyImplemented: true,
+  },
+  {
+    id: 'performance',
+    name: 'Performance & OKRs',
+    category: 'Growth',
+    description: 'Goal management, OKR tracking, 5-stage 360 review workflows, and high-performer analytics.',
+    icon: 'TrendingUp',
+    isFullyImplemented: true,
+  },
+  {
+    id: 'recruitment',
+    name: 'Recruitment & ATS',
+    category: 'Growth',
+    description: 'Job postings, visual candidate hiring pipelines, scorecards, and automated interview scheduling.',
+    icon: 'Briefcase',
+    isFullyImplemented: true,
+  },
+  {
+    id: 'leave',
+    name: 'Leave Management',
+    category: 'Operations',
+    description: 'Statutory leave quotas, holiday calendar, multi-tier approval workflows, and leave analytics.',
+    icon: 'CalendarDays',
+    isFullyImplemented: true,
+  },
+  {
+    id: 'ess',
+    name: 'Employee Self Service',
+    category: 'Core',
+    description: 'Self-service dashboard for attendance punches, payslip downloads, leave applications, and goal progress.',
+    icon: 'UserCheck',
+    isFullyImplemented: true,
+  },
+  {
+    id: 'expense',
+    name: 'Expense Claims',
+    category: 'Operations',
+    description: 'Reimbursement tracking, receipt uploads, approval workflows, and finance disbursal.',
+    icon: 'Receipt',
+    isFullyImplemented: true,
+  },
+  {
+    id: 'engagement',
+    name: 'Engagement & Kudos',
+    category: 'Growth',
+    description: 'Company-wide announcements, peer recognition kudos badges, and social feedback feed.',
+    icon: 'HeartHandshake',
+    isFullyImplemented: true,
+  },
+  {
+    id: 'marketplace',
+    name: 'Integration Marketplace',
+    category: 'Add-on',
+    description: 'Connect Slack, Jira, GitHub, Zoho, Google Workspace, and biometric devices seamlessly.',
+    icon: 'Boxes',
+    isFullyImplemented: true,
+  },
+];
 
 export interface Organization {
   id: string;
@@ -79,6 +164,7 @@ export interface DocumentItem {
   uploadDate: string;
   size?: string;
   verified: boolean;
+  fileKey?: string;
 }
 
 export interface LifecycleEvent {
@@ -151,7 +237,7 @@ export interface Department {
   headEmployeeId: string;
   headName: string;
   employeeCount: number;
-  budgetInr: number | string;
+  budgetInr: number;
 }
 
 export interface Designation {
@@ -159,7 +245,7 @@ export interface Designation {
   orgId: string;
   title: string;
   department: string;
-  level: string;
+  level: string; // e.g., "IC-3", "IC-5", "M-1", "DIR-1"
   minExperienceYears: number;
 }
 
@@ -167,11 +253,23 @@ export interface WorkShift {
   id: string;
   orgId: string;
   name: string;
-  startTime: string;
-  endTime: string;
-  graceMinutes: number;
-  breakDurationMinutes: number;
-  workingDays: string[];
+  startTime: string; // "09:00"
+  endTime: string;   // "18:00"
+  graceMinutes: number; // 15 mins
+  breakDurationMinutes: number; // 60 mins
+  workingDays: string[]; // ["Monday", "Tuesday", ...]
+}
+
+export interface PunchLocationTelemetry {
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number;
+  distanceFromOfficeMeters: number;
+  officeGeofenceName: string;
+  geofenceStatus: string;
+  deviceInfo?: string;
+  simulatedBiometricScore?: number;
+  isBiometricSimulated?: boolean;
 }
 
 export interface AttendanceRecord {
@@ -180,31 +278,19 @@ export interface AttendanceRecord {
   employeeId: string;
   employeeName: string;
   department: string;
-  date: string; // YYYY-MM-DD
-  clockInTime?: string;
-  clockOutTime?: string;
+  date: string; // "YYYY-MM-DD"
+  clockInTime?: string; // "09:02:14"
+  clockOutTime?: string; // "18:15:30"
   workHours?: number;
   totalWorkingHours?: number;
   overtimeHours?: number;
-  status: 'Present' | 'Absent' | 'Late' | 'Half Day' | 'On Leave' | 'Holiday' | string;
+  status: 'Present' | 'Late' | 'Half Day' | 'Absent' | 'On Leave' | string;
   geofenceStatus?: string;
   breakMinutes?: number;
-  
-  // Location & Geofence metrics
+  punchLocation?: PunchLocationTelemetry;
   withinGeofence?: boolean;
   distanceMeters?: number;
   verifiedAt?: string;
-  punchLocation?: {
-    latitude: number;
-    longitude: number;
-    accuracyMeters: number;
-    distanceFromOfficeMeters: number;
-    officeGeofenceName: string;
-    geofenceStatus: 'Inside Allowed Location' | 'Outside Authorized Location' | 'Location Unavailable' | string;
-    deviceInfo: string;
-    isBiometricSimulated?: boolean;
-    isOfflineSync?: boolean;
-  };
 }
 
 export interface RegularizationRequest {
@@ -220,14 +306,8 @@ export interface RegularizationRequest {
   approverRole?: Role;
   approverName?: string;
   comment?: string;
+  appliedDate?: string;
 }
-
-export type LeaveType = 
-  | 'Earned Leave (EL)'
-  | 'Casual Leave (CL)'
-  | 'Sick Leave (SL)'
-  | 'Maternity / Paternity'
-  | 'Comp Off';
 
 export interface LeaveRequest {
   id: string;
@@ -236,7 +316,8 @@ export interface LeaveRequest {
   employeeName: string;
   employeeAvatar?: string;
   department: string;
-  leaveType: LeaveType;
+  leaveType: 'Earned Leave (EL)' | 'Casual Leave (CL)' | 'Sick Leave (SL)' | 'Maternity / Paternity' | 'Comp Off' | string;
+  type?: string;
   startDate: string;
   endDate: string;
   days: number;
@@ -248,55 +329,40 @@ export interface LeaveRequest {
   approvedOrRejectedDate?: string;
 }
 
-export type ActivityCategory = 'leave' | 'payroll' | 'recruitment' | 'lifecycle' | 'attendance' | 'system';
-
-export interface ActivityItem {
-  id: string;
-  orgId: string;
-  orgName?: string;
-  category: ActivityCategory;
-  title: string;
-  description: string;
-  timestamp: string;
-  rawDate: string;
-  status?: string;
-  statusBadgeColor?: string;
-  actorName?: string;
-  actorRole?: string;
-  actorAvatar?: string;
-  actionUrl?: { module: string; subTab?: string };
-  actionLabel?: string;
-  isPendingAction?: boolean;
-  onApprove?: () => void;
-  onReject?: () => void;
-  metaDetails?: Record<string, any>;
+export interface LeaveBalance {
+  leaveType: string;
+  total: number;
+  used: number;
+  pending: number;
+  available: number;
+  icon?: string;
 }
 
 export interface SalaryStructure {
   id: string;
   orgId: string;
   name: string;
-  description: string;
-  basicPercentage: number;
-  hraPercentage: number;
-  specialAllowancePercentage: number;
-  conveyanceFixed: number;
-  medicalAllowanceFixed: number;
-  pfRate: number;
-  esiRate: number;
-  professionalTaxFixed: number;
-  isDefault: boolean;
-  effectiveFrom?: string; // Versioning timestamp for historical accuracy
+  description?: string;
+  basicPercentage: number;          // 40% of CTC
+  hraPercentage: number;            // 20% of CTC
+  specialAllowancePercentage: number; // balancing allowance (~30%)
+  conveyanceFixed: number;          // 1,600 INR/month
+  medicalAllowanceFixed: number;    // 1,250 INR/month
+  pfRate: number;                   // 12% on Basic capped at standard slabs
+  esiRate: number;                  // 0.75% of Gross if Gross <= 21,000
+  professionalTaxFixed: number;     // 200 INR/month standard
+  isDefault?: boolean;
 }
 
 export interface PayrollRun {
   id: string;
   orgId: string;
+  monthYear: string; // "August 2026" or "2026-08"
   month?: string;
-  monthYear: string;
-  status: 'Draft' | 'Attendance Verified' | 'Calculated' | 'Pending Approval' | 'Approved' | 'Disbursed' | string;
-  totalEmployees?: number;
-  processedEmployees?: number;
+  year?: number;
+  status: 'Draft' | 'Calculating' | 'Calculated' | 'Review' | 'Approved' | 'Disbursed';
+  totalEmployees: number;
+  processedEmployees: number;
   totalGrossPay: number;
   totalDeductions: number;
   totalTaxes?: number;
@@ -339,6 +405,7 @@ export interface Payslip {
   totalDeductions: number;
   
   netSalary: number;
+  pdfFileKey?: string;
   generatedDate: string;
 }
 
@@ -350,7 +417,8 @@ export interface PerformanceGoal {
   department?: string;
   title: string;
   description?: string;
-  category?: 'Individual' | 'Team' | 'Department' | 'OKR';
+  category?: 'Individual' | 'Team' | 'Department' | 'OKR' | string;
+  type?: string;
   targetMetric: string;
   progress?: number;
   currentProgress?: number;
@@ -412,6 +480,7 @@ export type CandidateStage =
   | 'HR Round'
   | 'Offer'
   | 'Offer Extended'
+  | 'Offered'
   | 'Hired'
   | 'Rejected';
 
@@ -458,10 +527,14 @@ export interface Candidate {
   location?: string;
   source?: 'LinkedIn' | 'Referral' | 'Naukri' | 'Direct Career Page' | 'Agency' | string;
   stage: CandidateStage;
+  resumeFileKey?: string;
   resumeFileName?: string;
   appliedDate?: string;
   rating?: number;
   notes?: string;
+  roleApplied?: string;
+  matchScore?: number;
+  avatar?: string;
 }
 
 export interface Interview {
@@ -471,15 +544,95 @@ export interface Interview {
   candidateName: string;
   jobTitle?: string;
   round?: string;
+  roundName?: string;
   roundType?: 'Screening Call' | 'Technical Round 1' | 'System Design' | 'HR Culture Fit' | 'Leadership' | string;
   interviewerName: string;
   scheduledAt?: string;
   scheduledDateTime?: string;
+  date?: string;
+  time?: string;
+  mode?: string;
   durationMinutes?: number;
   meetingLink?: string;
   feedback?: string;
   score?: number;
   status: 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled' | string;
+}
+
+// -------------------------------------------------------------
+// EXPENSE MANAGEMENT TYPES
+// -------------------------------------------------------------
+export type ExpenseCategory = 'Travel' | 'Meals & Entertainment' | 'Software & Tools' | 'Office Supplies' | 'Medical' | 'Training & Certs' | 'Other';
+export type ExpenseStatus = 'Pending' | 'Approved' | 'Rejected' | 'Reimbursed';
+
+export interface ExpenseClaim {
+  id: string;
+  orgId: string;
+  employeeId: string;
+  employeeName: string;
+  category: ExpenseCategory | string;
+  amount: number;
+  currency: string;
+  date: string;
+  merchant: string;
+  description: string;
+  receiptUrl?: string;
+  receiptFileKey?: string;
+  status: ExpenseStatus;
+  approvedBy?: string;
+  approvedDate?: string;
+  rejectionReason?: string;
+  createdAt: string;
+}
+
+// -------------------------------------------------------------
+// ENGAGEMENT TYPES
+// -------------------------------------------------------------
+export interface EngagementAnnouncement {
+  id: string;
+  orgId: string;
+  title: string;
+  content: string;
+  category: 'General' | 'Townhall' | 'Milestone' | 'Policy' | 'Celebration' | string;
+  authorName: string;
+  authorAvatar?: string;
+  pinned: boolean;
+  likesCount: number;
+  publishedAt: string;
+  createdAt: string;
+}
+
+export interface EngagementRecognition {
+  id: string;
+  orgId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar?: string;
+  recipientId: string;
+  recipientName: string;
+  recipientAvatar?: string;
+  badge: 'Team Player' | 'Innovation Hero' | 'Customer Champion' | 'Star Performer' | 'Helping Hand' | string;
+  message: string;
+  createdAt: string;
+}
+
+// -------------------------------------------------------------
+// MARKETPLACE TYPES
+// -------------------------------------------------------------
+export interface MarketplaceApp {
+  id: string;
+  name: string;
+  slug: string;
+  category: 'Communication' | 'Productivity' | 'Developer Tools' | 'Compliance' | 'Payments' | 'Identity' | string;
+  description: string;
+  developer: string;
+  icon: string;
+  badge?: string;
+  rating: number;
+  reviewsCount: number;
+  pricing: string;
+  isPopular: boolean;
+  installed?: boolean;
 }
 
 export interface NotificationItem {
@@ -536,4 +689,3 @@ export interface ToastItem {
     onClick: () => void;
   };
 }
-

@@ -13,7 +13,11 @@ import { AttendanceModuleView } from './components/modules/AttendanceModuleView'
 import { PerformanceModuleView } from './components/modules/PerformanceModuleView';
 import { RecruitmentModuleView } from './components/modules/RecruitmentModuleView';
 import { SuperAdminView } from './components/modules/SuperAdminView';
-import { ComingSoonView } from './components/modules/ComingSoonView';
+import { LeaveModuleView } from './components/modules/LeaveModuleView';
+import { EssModuleView } from './components/modules/EssModuleView';
+import { ExpenseModuleView } from './components/modules/ExpenseModuleView';
+import { EngagementModuleView } from './components/modules/EngagementModuleView';
+import { MarketplaceModuleView } from './components/modules/MarketplaceModuleView';
 import { ModuleSkeletonLoader } from './components/common/ModuleSkeletonLoader';
 
 const MainLayout: React.FC = () => {
@@ -46,14 +50,18 @@ const MainLayout: React.FC = () => {
         return <PerformanceModuleView />;
       case 'recruitment':
         return <RecruitmentModuleView />;
+      case 'leave':
+        return <LeaveModuleView />;
+      case 'ess':
+        return <EssModuleView />;
+      case 'expense':
+        return <ExpenseModuleView />;
+      case 'engagement':
+        return <EngagementModuleView />;
+      case 'marketplace':
+        return <MarketplaceModuleView />;
       case 'super-admin':
         return <SuperAdminView />;
-      case 'leave':
-      case 'ess':
-      case 'engagement':
-      case 'marketplace':
-      case 'expense':
-        return <ComingSoonView moduleId={activeModule} />;
       default:
         return <DashboardView />;
     }
@@ -82,7 +90,7 @@ const MainLayout: React.FC = () => {
         </main>
       </div>
 
-      {/* Global Simulated Modals & Notifications */}
+      {/* Global Modals & Notifications */}
       <FieldStaffMobileModal />
       <ExecutiveReportModal />
       <ToastContainer />

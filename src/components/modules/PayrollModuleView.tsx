@@ -218,7 +218,7 @@ export const PayrollModuleView: React.FC = () => {
               id="kpi-deductions"
               title="Statutory Deductions"
               value={formatInr(latestRun.totalDeductions)}
-              subtitle="PF + PT + TDS (mocked)"
+              subtitle="PF + PT + TDS Statutory"
               trend="neutral"
               icon={ShieldAlert}
               iconColor="text-amber-600"
@@ -281,7 +281,7 @@ export const PayrollModuleView: React.FC = () => {
                   {payrollRuns.map((run) => (
                     <tr key={run.id} className="hover:bg-indigo-50/30">
                       <td className="px-4 py-3.5 font-bold text-slate-900">
-                        {run.month}
+                        {run.monthYear || run.month}
                       </td>
                       <td className="px-4 py-3.5 text-slate-600">
                         {run.processedEmployees || employees.length} Staff
@@ -301,7 +301,7 @@ export const PayrollModuleView: React.FC = () => {
                       <td className="px-4 py-3.5 text-right">
                         <button
                           onClick={() => {
-                            setSelectedMonth(run.month);
+                            setSelectedMonth(run.monthYear || run.month || 'August 2026');
                             setActiveSubTab('payslips');
                           }}
                           className="text-indigo-600 hover:text-indigo-800 font-bold text-xs"

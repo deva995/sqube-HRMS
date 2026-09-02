@@ -14,11 +14,18 @@ router.use(authenticate);
 router.use(requireModule('attendance'));
 
 const ClockInSchema = z.object({
-  latitude: z.number(),
-  longitude: z.number(),
+  latitude: z.number().min(-90, 'Latitude must be between -90 and 90').max(90, 'Latitude must be between -90 and 90'),
+  longitude: z.number().min(-180, 'Longitude must be between -180 and 180').max(180, 'Longitude must be between -180 and 180'),
   accuracyMeters: z.number().default(10),
   timestamp: z.string().optional(),
   deviceInfo: z.string().optional(),
+  employeeId: z.string().optional(),
+});
+
+const ClockOutSchema = z.object({
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  timestamp: z.string().optional(),
   employeeId: z.string().optional(),
 });
 
@@ -40,9 +47,17 @@ router.post('/clock-in', async (req: AuthenticatedRequest, res: Response, next) 
     const { latitude, longitude, accuracyMeters, timestamp, deviceInfo, employeeId } = ClockInSchema.parse(req.body);
 
     const repo = getRepository(req.user?.orgId, req.user?.role);
-    const targetEmployeeId = employeeId || req.user?.employeeId || 'emp-acro-104';
-    const employee = await repo.getEmployeeById(targetEmployeeId);
+    
+    // Prevent non-admins from punching for others
+    const isAdminOrHr = ['Admin', 'Super Admin', 'HR Manager', 'Org Admin'].includes(req.user?.role || '');
+    let targetEmployeeId = req.user?.employeeId || 'emp-acro-104';
+    if (isAdminOrHr && employeeId) {
+      targetEmployeeId = employeeId;
+    } else if (employeeId && employeeId !== req.user?.employeeId && !isAdminOrHr) {
+      throw new AppError('Forbidden: Regular employees cannot punch attendance on behalf of another employee.', 403, 'IMPERSONATION_FORBIDDEN');
+    }
 
+    const employee = await repo.getEmployeeById(targetEmployeeId);
     if (!employee) {
       throw new AppError('Employee profile not associated with this user session.', 404);
     }
@@ -120,6 +135,78 @@ router.post('/clock-in', async (req: AuthenticatedRequest, res: Response, next) 
           disclaimer:
             'Server-side verified: Great-circle Haversine computation executed authoritatively on server. Note: Client device GPS hardware claims are subject to OS accuracy and device configuration.',
         },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/attendance/clock-out
+ * Clock out endpoint for closing active shift attendance
+ */
+router.post('/clock-out', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { timestamp, employeeId } = ClockOutSchema.parse(req.body);
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+
+    const isAdminOrHr = ['Admin', 'Super Admin', 'HR Manager', 'Org Admin'].includes(req.user?.role || '');
+    let targetEmployeeId = req.user?.employeeId || 'emp-acro-104';
+    if (isAdminOrHr && employeeId) {
+      targetEmployeeId = employeeId;
+    } else if (employeeId && employeeId !== req.user?.employeeId && !isAdminOrHr) {
+      throw new AppError('Forbidden: Regular employees cannot punch attendance on behalf of another employee.', 403, 'IMPERSONATION_FORBIDDEN');
+    }
+
+    const employee = await repo.getEmployeeById(targetEmployeeId);
+    if (!employee) {
+      throw new AppError('Employee profile not found.', 404);
+    }
+
+    const now = timestamp ? new Date(timestamp) : new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().split(' ')[0];
+
+    const todayRecords = await repo.getAttendanceRecords(dateStr);
+    const activePunch = todayRecords.find((r) => r.employeeId === employee.id);
+
+    if (!activePunch || !activePunch.clockInTime) {
+      throw new AppError('No active clock-in found for today. Please clock in before clocking out.', 400, 'NO_ACTIVE_CLOCK_IN');
+    }
+
+    let workHours = 8.0;
+    try {
+      const inParts = activePunch.clockInTime.split(':').map(Number);
+      const outParts = timeStr.split(':').map(Number);
+      const inMinutes = inParts[0] * 60 + inParts[1];
+      const outMinutes = outParts[0] * 60 + outParts[1];
+      if (outMinutes > inMinutes) {
+        workHours = Math.round(((outMinutes - inMinutes) / 60) * 10) / 10;
+      }
+    } catch {
+      workHours = 8.0;
+    }
+
+    const updated = await repo.recordAttendancePunch({
+      ...activePunch,
+      clockOutTime: timeStr,
+      workHours,
+      totalWorkingHours: workHours,
+      status: 'Present',
+    });
+
+    await logAuditEvent(req, {
+      action: 'ATTENDANCE_CLOCK_OUT',
+      module: 'attendance',
+      recordName: `${employee.firstName} ${employee.lastName} (Clocked out at ${timeStr})`,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        attendanceRecord: updated,
+        message: 'Clock-out recorded successfully.',
       },
     });
   } catch (error) {

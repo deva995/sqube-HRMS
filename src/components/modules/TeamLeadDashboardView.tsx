@@ -50,7 +50,7 @@ export const TeamLeadDashboardView: React.FC = () => {
   );
 
   const pendingRegularizations = regularizationRequests.filter((r) => r.status === 'Pending');
-  const squadGoals = goals.filter((g) => g.type === 'Team' || g.department === 'Engineering');
+  const squadGoals = goals.filter((g) => (g as any).type === 'Team' || g.category === 'Team' || g.department === 'Engineering');
 
   const [activeTab, setActiveTab] = useState<'squad' | 'regularizations' | 'sprint-okrs' | 'peer-reviews' | 'my-ess'>('squad');
 

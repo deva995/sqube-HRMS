@@ -63,6 +63,10 @@ model Organization {
   notifications       NotificationItem[]
   auditLogs           AuditLogEntry[]
   files               FileMetadata[]
+  expenses            ExpenseClaim[]
+  announcements       EngagementAnnouncement[]
+  recognitions        EngagementRecognition[]
+  installedApps       OrganizationMarketplaceApp[]
 
   @@map("organizations")
 }
@@ -118,10 +122,9 @@ model User {
   organization Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
   employee     Employee?     @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   refreshTokens RefreshToken[]
-  passwordResets PasswordResetToken[]
+  resetTokens   PasswordResetToken[]
 
   @@index([orgId])
-  @@index([email])
   @@map("users")
 }
 
@@ -154,48 +157,50 @@ model PasswordResetToken {
 }
 
 // -------------------------------------------------------------
-// 3. CORE HR ENTITIES
+// 3. HR CORE: EMPLOYEES, DEPARTMENTS, DESIGNATIONS, SHIFTS
 // -------------------------------------------------------------
 
 model Employee {
-  id                String   @id @default(uuid())
-  orgId             String
-  employeeCode      String
-  firstName         String
-  lastName          String
-  avatar            String?
-  email             String
-  phone             String
-  dob               String?
-  gender            String?
-  address           String?
-  emergencyContact  Json?    // { name, relationship, phone }
-  department        String
-  designation       String
-  managerId         String?
-  managerName       String?
-  reportingManager  String?
-  employmentType    String   @default("Full-Time")
-  joiningDate       String
-  workLocation      String?
-  location          String?
-  status            String   @default("Active") // Active, Probation, On Leave, Terminated
-  annualCtc         Float    @default(0.0)
-  monthlyGross      Float?   @default(0.0)
-  bankDetails       Json?    // { bankName, maskedAccountNumber, ifscCode }
-  documents         Json?    // DocumentItem[]
-  lifecycleHistory  Json?    // LifecycleEvent[]
-  shiftId           String?
-  performanceRating Float?   @default(4.0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(uuid())
+  orgId            String
+  employeeCode     String
+  firstName        String
+  lastName         String
+  avatar           String?
+  email            String
+  phone            String
+  dob              String?
+  gender           String?  // Male, Female, Non-Binary, Prefer not to say
+  address          String?
+  emergencyContact Json?    // { name: string, relationship: string, phone: string }
+  department       String
+  designation      String
+  managerId        String?
+  managerName      String?
+  reportingManager String?
+  employmentType   String   @default("Full-Time") // Full-Time, Part-Time, Contract, Intern
+  joiningDate      String
+  workLocation     String?
+  location         String?
+  status           String   @default("Active") // Active, On Leave, Notice Period, Terminated, Probation
+  annualCtc        Float    @default(0.0)
+  monthlyGross     Float?
+  bankDetails      Json?    // { bankName: string, maskedAccountNumber: string, ifscCode: string }
+  documents        Json?    // DocumentItem[]
+  lifecycleHistory Json?    // LifecycleEvent[]
+  shiftId          String?
+  performanceRating Float?  @default(4.0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   user         User?
+  shift        WorkShift?   @relation(fields: [shiftId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, employeeCode])
+  @@unique([orgId, email])
   @@index([orgId])
-  @@index([email])
+  @@index([department])
   @@map("employees")
 }
 
@@ -224,7 +229,7 @@ model Designation {
   title              String
   department         String
   level              String
-  minExperienceYears Float    @default(0.0)
+  minExperienceYears Int      @default(0)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -242,11 +247,12 @@ model WorkShift {
   endTime              String   // "18:00"
   graceMinutes         Int      @default(15)
   breakDurationMinutes Int      @default(60)
-  workingDays          Json     // ["Monday", "Tuesday", ...]
+  workingDays          Json     // string[] ["Monday", "Tuesday", ...]
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  employees    Employee[]
 
   @@index([orgId])
   @@map("work_shifts")
@@ -263,9 +269,9 @@ model GeofenceLocation {
   address         String?
   latitude        Float
   longitude       Float
-  radiusMeters    Float    @default(200.0)
-  policy          String   @default("Allow with Warning") // Block, Allow with Warning, Strict Block
-  isRemoteAllowed Boolean  @default(false)
+  radiusMeters    Int      @default(200)
+  policy          String   @default("Allow with Warning") // Block, Allow with Warning, Allow with Approval Required, Strict Block
+  isRemoteAllowed Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -281,17 +287,17 @@ model AttendanceRecord {
   employeeId        String
   employeeName      String
   department        String
-  date              String   // YYYY-MM-DD
-  clockInTime       String?  // HH:mm:ss
-  clockOutTime      String?  // HH:mm:ss
+  date              String   // "YYYY-MM-DD"
+  clockInTime       String?  // "HH:MM:SS"
+  clockOutTime      String?  // "HH:MM:SS"
   workHours         Float?   @default(0.0)
   totalWorkingHours Float?   @default(0.0)
   overtimeHours     Float?   @default(0.0)
-  status            String   @default("Present") // Present, Absent, Late, Half Day, On Leave
-  geofenceStatus    String?  // Inside Allowed Location, Outside Authorized Location
+  status            String   @default("Present") // Present, Late, Half Day, Absent, On Leave
+  geofenceStatus    String?  // In Office Geofence, Remote Verified, Warning Distance
   breakMinutes      Int?     @default(0)
-  punchLocation     Json?    // { latitude, longitude, accuracyMeters, distanceFromOfficeMeters, officeGeofenceName, geofenceStatus, deviceInfo }
-  withinGeofence    Boolean? @default(true)
+  punchLocation     Json?    // Detailed geofence telemetry object
+  withinGeofence    Boolean  @default(true)
   distanceMeters    Float?   @default(0.0)
   verifiedAt        DateTime?
   createdAt         DateTime @default(now())
@@ -301,31 +307,35 @@ model AttendanceRecord {
 
   @@unique([orgId, employeeId, date])
   @@index([orgId])
-  @@index([employeeId])
+  @@index([date])
   @@map("attendance_records")
 }
 
 model RegularizationRequest {
-  id                String   @id @default(uuid())
-  orgId             String
-  employeeId        String
-  employeeName      String
-  date              String
-  reason            String
-  requestedClockIn  String?
+  id               String   @id @default(uuid())
+  orgId            String
+  employeeId       String
+  employeeName     String
+  date             String
+  reason           String
+  requestedClockIn String?
   requestedClockOut String?
-  status            String   @default("Pending") // Pending, Approved, Rejected
-  approverRole      String?
-  approverName      String?
-  comment           String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  status           String   @default("Pending") // Pending, Approved, Rejected
+  approverRole     String?  // Manager, Team Lead, HR Manager, Admin
+  approverName     String?
+  comment          String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([orgId])
   @@map("regularization_requests")
 }
+
+// -------------------------------------------------------------
+// 5. LEAVE MANAGEMENT
+// -------------------------------------------------------------
 
 model LeaveRequest {
   id                     String   @id @default(uuid())
@@ -334,7 +344,7 @@ model LeaveRequest {
   employeeName           String
   employeeAvatar         String?
   department             String
-  leaveType              String   // Earned Leave (EL), Casual Leave (CL), Sick Leave (SL), etc.
+  leaveType              String   // Earned Leave (EL), Casual Leave (CL), Sick Leave (SL), Maternity / Paternity, Comp Off
   startDate              String
   endDate                String
   days                   Float    @default(1.0)
@@ -354,14 +364,14 @@ model LeaveRequest {
 }
 
 // -------------------------------------------------------------
-// 5. PAYROLL & COMPENSATION
+// 6. PAYROLL & COMPENSATION (STATUTORY VERSIONING)
 // -------------------------------------------------------------
 
 model SalaryStructure {
   id                         String   @id @default(uuid())
   orgId                      String
   name                       String
-  description                String
+  description                String?
   basicPercentage            Float    @default(40.0)
   hraPercentage              Float    @default(20.0)
   specialAllowancePercentage Float    @default(30.0)
@@ -371,14 +381,13 @@ model SalaryStructure {
   esiRate                    Float    @default(0.75)
   professionalTaxFixed       Float    @default(200.0)
   isDefault                  Boolean  @default(true)
-  effectiveFrom              DateTime @default(now()) // Versioning support for historical accuracy
+  effectiveFrom              DateTime @default(now())
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([orgId])
-  @@index([orgId, effectiveFrom])
   @@map("salary_structures")
 }
 
@@ -386,7 +395,7 @@ model PayrollRun {
   id                 String   @id @default(uuid())
   orgId              String
   monthYear          String   // "2026-08" or "August 2026"
-  status             String   @default("Draft") // Draft, Calculated, Approved, Disbursed
+  status             String   @default("Draft") // Draft, Calculating, Calculated, Review, Approved, Disbursed
   totalEmployees     Int      @default(0)
   processedEmployees Int      @default(0)
   totalGrossPay      Float    @default(0.0)
@@ -421,8 +430,8 @@ model Payslip {
   maskedAccount    String
   monthYear        String
   workingDays      Int      @default(30)
-  daysPresent      Int      @default(30)
-  paidLeaves       Int      @default(0)
+  daysPresent      Int      @default(28)
+  paidLeaves       Int      @default(2)
   lossOfPayDays    Int      @default(0)
   basicSalary      Float    @default(0.0)
   hra              Float    @default(0.0)
@@ -450,7 +459,7 @@ model Payslip {
 }
 
 // -------------------------------------------------------------
-// 6. PERFORMANCE & OKRS
+// 7. PERFORMANCE & OKRS
 // -------------------------------------------------------------
 
 model PerformanceGoal {
@@ -485,12 +494,13 @@ model PerformanceReview {
   employeeId          String?
   employeeName        String
   reviewerName        String?
-  cycle               String?
-  reviewCycle         String?
+  cycle               String   @default("Q3 2026")
+  reviewCycle         String   @default("Q3 2026")
   rating              Float?   @default(0.0)
   feedback            String?
   department          String?
-  currentStage        String   @default("Self Evaluation")
+  currentStage        String   @default("Self") // Self, Manager, Peer, HR, Final
+  stage               String?
   isCompleted         Boolean  @default(false)
   selfRating          Float?   @default(0.0)
   selfComments        String?
@@ -503,7 +513,7 @@ model PerformanceReview {
   hrRating            Float?   @default(0.0)
   hrComments          String?
   finalScore          Float?   @default(0.0)
-  finalRecommendation String?  @default("Exceeds Expectations")
+  finalRecommendation String?  // Promote, Salary Revision, Retain & Train, Performance Plan, Exceeds Expectations
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -514,7 +524,7 @@ model PerformanceReview {
 }
 
 // -------------------------------------------------------------
-// 7. RECRUITMENT & ATS PIPELINE
+// 8. RECRUITMENT & ATS
 // -------------------------------------------------------------
 
 model JobPosting {
@@ -538,6 +548,7 @@ model JobPosting {
   updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  candidates   Candidate[]
 
   @@index([orgId])
   @@map("job_postings")
@@ -568,6 +579,7 @@ model Candidate {
   updatedAt        DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  job          JobPosting?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
   interviews   Interview[]
 
   @@index([orgId])
@@ -601,7 +613,122 @@ model Interview {
 }
 
 // -------------------------------------------------------------
-// 8. NOTIFICATIONS & AUDIT TRAIL
+// 9. EXPENSE MANAGEMENT
+// -------------------------------------------------------------
+
+model ExpenseClaim {
+  id              String   @id @default(uuid())
+  orgId           String
+  employeeId      String
+  employeeName    String
+  category        String   // Travel, Meals, Software, Office Supplies, Medical, Other
+  amount          Float
+  currency        String   @default("INR")
+  date            String   // "YYYY-MM-DD"
+  merchant        String
+  description     String
+  receiptUrl      String?
+  receiptFileKey  String?
+  status          String   @default("Pending") // Pending, Approved, Rejected, Reimbursed
+  approvedBy      String?
+  approvedDate    String?
+  rejectionReason String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([employeeId])
+  @@map("expense_claims")
+}
+
+// -------------------------------------------------------------
+// 10. EMPLOYEE ENGAGEMENT
+// -------------------------------------------------------------
+
+model EngagementAnnouncement {
+  id          String   @id @default(uuid())
+  orgId       String
+  title       String
+  content     String
+  category    String   @default("General") // General, Townhall, Milestone, Policy, Celebration
+  authorName  String
+  authorAvatar String?
+  pinned      Boolean  @default(false)
+  likesCount  Int      @default(0)
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("engagement_announcements")
+}
+
+model EngagementRecognition {
+  id              String   @id @default(uuid())
+  orgId           String
+  senderId        String
+  senderName      String
+  senderAvatar    String?
+  recipientId     String
+  recipientName   String
+  recipientAvatar String?
+  badge           String   // Team Player, Innovation Hero, Customer Champion, Star Performer, Helping Hand
+  message         String
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("engagement_recognitions")
+}
+
+// -------------------------------------------------------------
+// 11. MARKETPLACE & APP INTEGRATIONS
+// -------------------------------------------------------------
+
+model MarketplaceApp {
+  id           String   @id @default(uuid())
+  name         String
+  slug         String   @unique
+  category     String   // Communication, Productivity, Developer Tools, Compliance, Payments, Identity
+  description  String
+  developer    String
+  icon         String
+  badge        String?
+  rating       Float    @default(4.8)
+  reviewsCount Int      @default(0)
+  pricing      String   @default("Free")
+  isPopular    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  installations OrganizationMarketplaceApp[]
+
+  @@map("marketplace_apps")
+}
+
+model OrganizationMarketplaceApp {
+  id           String   @id @default(uuid())
+  orgId        String
+  appId        String
+  installed    Boolean  @default(true)
+  installedAt  DateTime @default(now())
+  configuredBy String?
+
+  organization Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  app          MarketplaceApp @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, appId])
+  @@index([orgId])
+  @@map("organization_marketplace_apps")
+}
+
+// -------------------------------------------------------------
+// 12. NOTIFICATIONS & AUDIT TRAIL
 // -------------------------------------------------------------
 
 model NotificationItem {
@@ -645,7 +772,7 @@ model AuditLogEntry {
 }
 
 // -------------------------------------------------------------
-// 9. FILE METADATA & SIGNED ACCESS
+// 13. FILE METADATA & SIGNED ACCESS
 // -------------------------------------------------------------
 
 model FileMetadata {

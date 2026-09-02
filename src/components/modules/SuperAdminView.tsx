@@ -15,8 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useHrms } from '../../context/HrmsContext';
-import { ALL_MODULES } from '../../mock/demoData';
-import { ModuleId, Organization, Role, AuditLogEntry } from '../../types';
+import { ALL_MODULES, ModuleId, Organization, Role, AuditLogEntry } from '../../types';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
 import { PrototypeDisclaimer } from '../common/PrototypeDisclaimer';
@@ -80,7 +79,7 @@ export const SuperAdminView: React.FC = () => {
               Super Admin & Organization Control
             </h1>
             <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2 py-0.5 rounded-md">
-              In-Memory Mock State
+              Multi-Tenant Mesh Control
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">

@@ -43,7 +43,7 @@ export const EmployeeEssDashboardView: React.FC = () => {
 
   // Active user's data
   const myLeaves = leaveRequests.filter((r) => r.employeeId === 'emp-eng-001' || r.employeeName?.includes('Aarav'));
-  const myGoals = goals.filter((g) => g.employeeId === 'emp-eng-001' || g.type === 'Individual');
+  const myGoals = goals.filter((g) => g.employeeId === 'emp-eng-001' || (g as any).type === 'Individual' || g.category === 'Individual');
   const myLatestPayslip = payslips[0];
 
   // Leave Form Modal
@@ -69,7 +69,8 @@ export const EmployeeEssDashboardView: React.FC = () => {
     submitLeaveRequest({
       employeeId: 'emp-eng-001',
       employeeName: 'Aarav Patel',
-      type: leaveType,
+      department: 'Engineering',
+      leaveType: leaveType as any,
       startDate: leaveStartDate,
       endDate: leaveEndDate,
       days: leaveDays,
@@ -89,7 +90,6 @@ export const EmployeeEssDashboardView: React.FC = () => {
       requestedClockIn: regClockIn,
       requestedClockOut: regClockOut,
       reason: regReason,
-      appliedDate: '2026-08-31',
     });
     setIsRegModalOpen(false);
     confetti({ particleCount: 30, spread: 50, origin: { y: 0.6 } });
@@ -276,7 +276,7 @@ export const EmployeeEssDashboardView: React.FC = () => {
                   <div key={leave.id} className="p-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-900">{leave.type}</span>
+                        <span className="text-xs font-bold text-slate-900">{leave.leaveType || (leave as any).type}</span>
                         <span className="text-[10px] text-slate-500 font-mono">({leave.days} Day{leave.days > 1 ? 's' : ''})</span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                           leave.status === 'Approved'

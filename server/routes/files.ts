@@ -8,12 +8,35 @@ import { logAuditEvent } from '../services/audit';
 
 const router = Router();
 
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+
+const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
+
 const SignedUrlRequestSchema = z.object({
-  fileKey: z.string().min(1),
+  fileKey: z
+    .string()
+    .min(1)
+    .regex(/^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9]+)?$/, 'File key must only contain alphanumeric characters, underscores, dashes, and standard extension'),
   fileName: z.string().optional(),
   category: z.enum(['resume', 'payslip', 'document', 'policy']).default('document'),
-  mimeType: z.string().default('application/pdf'),
-  sizeBytes: z.number().default(1024),
+  mimeType: z
+    .string()
+    .refine((val) => ALLOWED_MIME_TYPES.includes(val), {
+      message: 'Unsupported or unauthorized file MIME type.',
+    })
+    .default('application/pdf'),
+  sizeBytes: z
+    .number()
+    .min(1, 'File cannot be empty')
+    .max(MAX_FILE_SIZE_BYTES, 'File size exceeds maximum allowed limit of 25MB')
+    .default(1024),
 });
 
 /**

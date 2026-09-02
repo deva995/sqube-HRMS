@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
-import { AuthenticatedRequest, NotFoundError } from '../types';
+import { AuthenticatedRequest, NotFoundError, AppError } from '../types';
 import { authenticate, requireRole } from '../middleware/auth';
 import { requireModule } from '../middleware/moduleCheck';
 import { getRepository } from '../db/repository';
@@ -141,12 +141,49 @@ router.get('/payslips', async (req: AuthenticatedRequest, res: Response, next) =
   try {
     const repo = getRepository(req.user?.orgId, req.user?.role);
     const payrollRunId = req.query.payrollRunId as string | undefined;
-    const payslips = await repo.getPayslips(payrollRunId);
+    const requestedEmpId = req.query.employeeId as string | undefined;
+
+    // Enforce employee isolation: regular employees can ONLY view their own payslips
+    let effectiveEmployeeId = requestedEmpId;
+    if (req.user?.role === 'Employee') {
+      if (requestedEmpId && requestedEmpId !== req.user.employeeId) {
+        throw new AppError('Forbidden: Employees cannot view other employees\' payslips.', 403, 'FORBIDDEN_PAYSLIP_ACCESS');
+      }
+      effectiveEmployeeId = req.user.employeeId;
+    }
+
+    const payslips = await repo.getPayslips(payrollRunId, effectiveEmployeeId);
 
     res.json({
       success: true,
       data: payslips,
       meta: { total: payslips.length },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/payroll/payslips/:id
+ */
+router.get('/payslips/:id', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const payslip = await repo.getPayslipById(req.params.id);
+
+    if (!payslip) {
+      throw new NotFoundError('Payslip');
+    }
+
+    // Role verification: If Employee, must match their own employeeId
+    if (req.user?.role === 'Employee' && payslip.employeeId !== req.user.employeeId) {
+      throw new AppError('Forbidden: Unauthorized to access this payslip.', 403, 'FORBIDDEN_PAYSLIP_ACCESS');
+    }
+
+    res.json({
+      success: true,
+      data: payslip,
     });
   } catch (error) {
     next(error);
