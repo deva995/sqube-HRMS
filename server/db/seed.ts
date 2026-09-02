@@ -152,7 +152,30 @@ async function main() {
     },
   });
 
-  // 7. Employees
+  // 7. Salary Structures
+  console.log('[Prisma Seed] Seeding salary structures...');
+  await prisma.salaryStructure.upsert({
+    where: { id: 'sal-acro-default' },
+    update: {},
+    create: {
+      id: 'sal-acro-default',
+      orgId: acroOrg.id,
+      name: 'Standard IT Statutory Compensation Structure',
+      description: '40% Basic, 20% HRA, PF 12%, ESI 0.75%, PT 200',
+      basicPercentage: 40,
+      hraPercentage: 20,
+      specialAllowancePercentage: 30,
+      conveyanceFixed: 1600,
+      medicalAllowanceFixed: 1250,
+      pfRate: 12,
+      esiRate: 0.75,
+      professionalTaxFixed: 200,
+      isDefault: true,
+      effectiveFrom: new Date('2025-01-01T00:00:00.000Z'),
+    },
+  });
+
+  // 8. Employees
   console.log('[Prisma Seed] Seeding employees...');
   const employeesData = [
     {
@@ -255,7 +278,7 @@ async function main() {
     });
   }
 
-  // 8. Users & Authentication
+  // 9. Users & Authentication
   console.log('[Prisma Seed] Seeding user accounts...');
   const usersData = [
     {
@@ -351,7 +374,92 @@ async function main() {
     });
   }
 
-  console.log('✅ [Prisma Seed] Database seeded successfully with default accounts and sample data!');
+  // 10. Performance Goals
+  console.log('[Prisma Seed] Seeding performance goals...');
+  await prisma.performanceGoal.upsert({
+    where: { id: 'goal-1' },
+    update: {},
+    create: {
+      id: 'goal-1',
+      orgId: acroOrg.id,
+      employeeId: 'emp-acro-104',
+      employeeName: 'Sneha Patel',
+      department: 'Engineering',
+      title: 'Architect Micro-Frontend Migration for HR Core',
+      description: 'Decouple legacy monolith views into high-performance isolated components',
+      category: 'OKR',
+      targetMetric: '100% Core Modules Migrated',
+      currentProgress: 65,
+      weightage: 30,
+      dueDate: '2026-12-31',
+      priority: 'High',
+      status: 'On Track',
+      score: 4.2,
+    },
+  });
+
+  // 11. Recruitment (Job, Candidate, Interview)
+  console.log('[Prisma Seed] Seeding recruitment pipeline...');
+  const job = await prisma.jobPosting.upsert({
+    where: { id: 'job-1' },
+    update: {},
+    create: {
+      id: 'job-1',
+      orgId: acroOrg.id,
+      title: 'Staff Cloud Infrastructure Engineer',
+      department: 'Engineering',
+      location: 'Bengaluru HQ (Hybrid)',
+      employmentType: 'Full-Time',
+      experience: '6-9 Years',
+      salaryRange: '₹35,00,000 - ₹45,00,000',
+      description: 'Lead multi-region Kubernetes clusters and high-availability database replication.',
+      status: 'Published',
+      openings: 2,
+      appliedCount: 14,
+      postedDate: '2026-08-15',
+    },
+  });
+
+  await prisma.candidate.upsert({
+    where: { id: 'cand-1' },
+    update: {},
+    create: {
+      id: 'cand-1',
+      orgId: acroOrg.id,
+      jobId: job.id,
+      jobTitle: job.title,
+      name: 'Aditya Saxena',
+      email: 'aditya.saxena@example.com',
+      phone: '+91 91234 56789',
+      currentCompany: 'CloudScale Technologies',
+      experienceYears: 7.5,
+      expectedSalary: '₹40 LPA',
+      noticePeriodDays: 30,
+      location: 'Bengaluru',
+      source: 'LinkedIn',
+      stage: 'Technical',
+      appliedDate: '2026-08-20',
+      rating: 4.5,
+    },
+  });
+
+  // 12. Notifications
+  console.log('[Prisma Seed] Seeding initial notifications...');
+  await prisma.notificationItem.upsert({
+    where: { id: 'notif-1' },
+    update: {},
+    create: {
+      id: 'notif-1',
+      orgId: acroOrg.id,
+      title: 'Monthly Payroll Cycle Finalized',
+      message: 'August 2026 payroll run has been approved and marked ready for disbursement.',
+      type: 'payroll',
+      timestamp: '2 hours ago',
+      isRead: false,
+    },
+  });
+
+  console.log('✅ [Prisma Seed] Database seeded successfully with all models and default accounts!');
 }
 
 main()

@@ -27,27 +27,31 @@ const CreateGoalSchema = z.object({
 /**
  * GET /api/v1/performance/goals
  */
-router.get('/goals', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const goals = repo.getGoals();
-  res.json({ success: true, data: goals, meta: { total: goals.length } });
+router.get('/goals', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const goals = await repo.getGoals();
+    res.json({ success: true, data: goals, meta: { total: goals.length } });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * POST /api/v1/performance/goals
  */
-router.post('/goals', (req: AuthenticatedRequest, res: Response, next) => {
+router.post('/goals', async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const parsed = CreateGoalSchema.parse(req.body);
     const repo = getRepository(req.user?.orgId, req.user?.role);
 
-    const goal = repo.createGoal({
+    const goal = await repo.createGoal({
       ...parsed,
       currentProgress: 0,
       status: 'On Track',
     });
 
-    logAuditEvent(req, {
+    await logAuditEvent(req, {
       action: 'CREATE_PERFORMANCE_GOAL',
       module: 'performance',
       recordName: `${goal.title} for ${goal.employeeName}`,
@@ -62,14 +66,14 @@ router.post('/goals', (req: AuthenticatedRequest, res: Response, next) => {
 /**
  * PATCH /api/v1/performance/goals/:id/progress
  */
-router.patch('/goals/:id/progress', (req: AuthenticatedRequest, res: Response, next) => {
+router.patch('/goals/:id/progress', async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { progress } = z.object({ progress: z.number().min(0).max(100) }).parse(req.body);
     const repo = getRepository(req.user?.orgId, req.user?.role);
 
-    const goal = repo.updateGoalProgress(req.params.id, progress);
+    const goal = await repo.updateGoalProgress(req.params.id, progress);
 
-    logAuditEvent(req, {
+    await logAuditEvent(req, {
       action: 'UPDATE_GOAL_PROGRESS',
       module: 'performance',
       recordName: `${goal.title} (${progress}%)`,
@@ -84,10 +88,14 @@ router.patch('/goals/:id/progress', (req: AuthenticatedRequest, res: Response, n
 /**
  * GET /api/v1/performance/reviews
  */
-router.get('/reviews', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const reviews = repo.getReviews();
-  res.json({ success: true, data: reviews, meta: { total: reviews.length } });
+router.get('/reviews', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const reviews = await repo.getReviews();
+    res.json({ success: true, data: reviews, meta: { total: reviews.length } });
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;

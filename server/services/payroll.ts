@@ -17,17 +17,18 @@ export interface CalculationResult {
 }
 
 /**
- * Server-Side Payroll Calculation Engine
+ * Server-Side Payroll Calculation Engine (Async with PostgreSQL Prisma)
  */
-export function calculateMonthlyPayroll(
+export async function calculateMonthlyPayroll(
   repo: TenantScopedRepository,
   monthYear: string,
   targetEmployeeIds?: string[]
-): CalculationResult {
+): Promise<CalculationResult> {
   const targetDate = new Date(`${monthYear}-01T00:00:00.000Z`);
-  const activeStructure = repo.getActiveSalaryStructure(isNaN(targetDate.getTime()) ? new Date() : targetDate);
+  const activeStructure = await repo.getActiveSalaryStructure(isNaN(targetDate.getTime()) ? new Date() : targetDate);
 
-  let employeeList = repo.getEmployees().filter((e) => e.status === 'Active' || e.status === 'Probation');
+  const allEmployees = await repo.getEmployees();
+  let employeeList = allEmployees.filter((e) => e.status === 'Active' || e.status === 'Probation');
   if (targetEmployeeIds && targetEmployeeIds.length > 0) {
     employeeList = employeeList.filter((e) => targetEmployeeIds.includes(e.id));
   }

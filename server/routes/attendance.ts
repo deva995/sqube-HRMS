@@ -35,19 +35,19 @@ const RegularizationSchema = z.object({
  * POST /api/v1/attendance/clock-in
  * Authoritative Server-Side Geofence Verification & Clock-In
  */
-router.post('/clock-in', (req: AuthenticatedRequest, res: Response, next) => {
+router.post('/clock-in', async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { latitude, longitude, accuracyMeters, timestamp, deviceInfo, employeeId } = ClockInSchema.parse(req.body);
 
     const repo = getRepository(req.user?.orgId, req.user?.role);
     const targetEmployeeId = employeeId || req.user?.employeeId || 'emp-acro-104';
-    const employee = repo.getEmployeeById(targetEmployeeId);
+    const employee = await repo.getEmployeeById(targetEmployeeId);
 
     if (!employee) {
       throw new AppError('Employee profile not associated with this user session.', 404);
     }
 
-    const orgGeofences = repo.getGeofences();
+    const orgGeofences = await repo.getGeofences();
     const effectiveTimestamp = timestamp || new Date().toISOString();
 
     // Run authoritative server-side Haversine & Drift verification
@@ -98,9 +98,9 @@ router.post('/clock-in', (req: AuthenticatedRequest, res: Response, next) => {
       verifiedAt: verification.verifiedAt,
     };
 
-    const savedRecord = repo.recordAttendancePunch(record);
+    const savedRecord = await repo.recordAttendancePunch(record);
 
-    logAuditEvent(req, {
+    await logAuditEvent(req, {
       action: 'ATTENDANCE_CLOCK_IN',
       module: 'attendance',
       recordName: `${employee.firstName} ${employee.lastName} (${verification.statusText}, ${verification.distanceMeters}m)`,
@@ -130,60 +130,72 @@ router.post('/clock-in', (req: AuthenticatedRequest, res: Response, next) => {
 /**
  * GET /api/v1/attendance/records
  */
-router.get('/records', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const date = req.query.date as string | undefined;
-  const records = repo.getAttendanceRecords(date);
+router.get('/records', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const date = req.query.date as string | undefined;
+    const records = await repo.getAttendanceRecords(date);
 
-  res.json({
-    success: true,
-    data: records,
-    meta: { total: records.length },
-  });
+    res.json({
+      success: true,
+      data: records,
+      meta: { total: records.length },
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * GET /api/v1/attendance/geofences
  */
-router.get('/geofences', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const geofences = repo.getGeofences();
+router.get('/geofences', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const geofences = await repo.getGeofences();
 
-  res.json({
-    success: true,
-    data: geofences,
-    meta: { total: geofences.length },
-  });
+    res.json({
+      success: true,
+      data: geofences,
+      meta: { total: geofences.length },
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * GET /api/v1/attendance/regularizations
  */
-router.get('/regularizations', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const regularizations = repo.getRegularizations();
+router.get('/regularizations', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const regularizations = await repo.getRegularizations();
 
-  res.json({
-    success: true,
-    data: regularizations,
-    meta: { total: regularizations.length },
-  });
+    res.json({
+      success: true,
+      data: regularizations,
+      meta: { total: regularizations.length },
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * POST /api/v1/attendance/regularizations
  */
-router.post('/regularizations', (req: AuthenticatedRequest, res: Response, next) => {
+router.post('/regularizations', async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const parsed = RegularizationSchema.parse(req.body);
     const repo = getRepository(req.user?.orgId, req.user?.role);
 
-    const created = repo.createRegularization({
+    const created = await repo.createRegularization({
       ...parsed,
       status: 'Pending',
     });
 
-    logAuditEvent(req, {
+    await logAuditEvent(req, {
       action: 'SUBMIT_REGULARIZATION_REQUEST',
       module: 'attendance',
       recordName: `${parsed.employeeName} for ${parsed.date}`,
@@ -201,14 +213,14 @@ router.post('/regularizations', (req: AuthenticatedRequest, res: Response, next)
 router.patch(
   '/regularizations/:id/status',
   requireRole(['Admin', 'HR Manager', 'Manager', 'Team Lead', 'Super Admin']),
-  (req: AuthenticatedRequest, res: Response, next) => {
+  async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const { status } = z.object({ status: z.enum(['Approved', 'Rejected']) }).parse(req.body);
       const repo = getRepository(req.user?.orgId, req.user?.role);
 
-      const updated = repo.updateRegularizationStatus(req.params.id, status, req.user?.name || 'Manager');
+      const updated = await repo.updateRegularizationStatus(req.params.id, status, req.user?.name || 'Manager');
 
-      logAuditEvent(req, {
+      await logAuditEvent(req, {
         action: `REGULARIZATION_${status.toUpperCase()}`,
         module: 'attendance',
         recordName: `Request ${req.params.id}`,

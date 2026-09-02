@@ -14,19 +14,27 @@ router.use(requireModule('recruitment'));
 /**
  * GET /api/v1/recruitment/jobs
  */
-router.get('/jobs', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const jobs = repo.getJobs();
-  res.json({ success: true, data: jobs, meta: { total: jobs.length } });
+router.get('/jobs', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const jobs = await repo.getJobs();
+    res.json({ success: true, data: jobs, meta: { total: jobs.length } });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * GET /api/v1/recruitment/candidates
  */
-router.get('/candidates', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const candidates = repo.getCandidates();
-  res.json({ success: true, data: candidates, meta: { total: candidates.length } });
+router.get('/candidates', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const candidates = await repo.getCandidates();
+    res.json({ success: true, data: candidates, meta: { total: candidates.length } });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -35,7 +43,7 @@ router.get('/candidates', (req: AuthenticatedRequest, res: Response) => {
 router.patch(
   '/candidates/:id/stage',
   requireRole(['Admin', 'HR Manager', 'Recruiter', 'Super Admin']),
-  (req: AuthenticatedRequest, res: Response, next) => {
+  async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const { stage } = z
         .object({
@@ -56,9 +64,9 @@ router.patch(
         .parse(req.body);
 
       const repo = getRepository(req.user?.orgId, req.user?.role);
-      const updated = repo.updateCandidateStage(req.params.id, stage as any);
+      const updated = await repo.updateCandidateStage(req.params.id, stage as any);
 
-      logAuditEvent(req, {
+      await logAuditEvent(req, {
         action: 'UPDATE_CANDIDATE_STAGE',
         module: 'recruitment',
         recordName: `${updated.name} -> ${stage}`,
@@ -74,10 +82,14 @@ router.patch(
 /**
  * GET /api/v1/recruitment/interviews
  */
-router.get('/interviews', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const interviews = repo.getInterviews();
-  res.json({ success: true, data: interviews, meta: { total: interviews.length } });
+router.get('/interviews', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const interviews = await repo.getInterviews();
+    res.json({ success: true, data: interviews, meta: { total: interviews.length } });
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;

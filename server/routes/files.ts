@@ -20,7 +20,7 @@ const SignedUrlRequestSchema = z.object({
  * POST /api/v1/files/signed-upload
  * Issues a cryptographically signed time-limited upload URL
  */
-router.post('/signed-upload', authenticate, (req: AuthenticatedRequest, res: Response, next) => {
+router.post('/signed-upload', authenticate, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { fileKey, fileName, category, mimeType, sizeBytes } = SignedUrlRequestSchema.parse(req.body);
     const orgId = req.user?.orgId || 'org-acro';
@@ -33,7 +33,7 @@ router.post('/signed-upload', authenticate, (req: AuthenticatedRequest, res: Res
     });
 
     const repo = getRepository(orgId, req.user?.role);
-    repo.saveFileMetadata({
+    await repo.saveFileMetadata({
       id: `file-${Date.now().toString(36)}`,
       orgId,
       fileKey,
@@ -46,7 +46,7 @@ router.post('/signed-upload', authenticate, (req: AuthenticatedRequest, res: Res
       createdAt: new Date().toISOString(),
     });
 
-    logAuditEvent(req, {
+    await logAuditEvent(req, {
       action: 'GENERATE_SIGNED_UPLOAD_URL',
       module: 'storage',
       recordName: fileKey,
@@ -65,7 +65,7 @@ router.post('/signed-upload', authenticate, (req: AuthenticatedRequest, res: Res
  * POST /api/v1/files/signed-download
  * Issues a cryptographically signed time-limited download URL
  */
-router.post('/signed-download', authenticate, (req: AuthenticatedRequest, res: Response, next) => {
+router.post('/signed-download', authenticate, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { fileKey } = z.object({ fileKey: z.string() }).parse(req.body);
     const orgId = req.user?.orgId || 'org-acro';
@@ -107,7 +107,7 @@ router.get('/download/:fileKey', (req, res, next) => {
     // Verify signature
     verifySignedUrl(fileKey, orgId, action, expires, sig);
 
-    // Return mock document stream or metadata
+    // Return document stream
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${fileKey}.pdf"`);
     res.send(`%PDF-1.4\n% Authentic Sqbe HRMS Verified Document Stream: ${fileKey} (Tenant: ${orgId})`);

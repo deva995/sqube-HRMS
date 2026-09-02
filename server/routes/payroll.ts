@@ -20,19 +20,27 @@ const CalculatePayrollSchema = z.object({
 /**
  * GET /api/v1/payroll/structures
  */
-router.get('/structures', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const structures = repo.getSalaryStructures();
-  res.json({ success: true, data: structures, meta: { total: structures.length } });
+router.get('/structures', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const structures = await repo.getSalaryStructures();
+    res.json({ success: true, data: structures, meta: { total: structures.length } });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * GET /api/v1/payroll/runs
  */
-router.get('/runs', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const runs = repo.getPayrollRuns();
-  res.json({ success: true, data: runs, meta: { total: runs.length } });
+router.get('/runs', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const runs = await repo.getPayrollRuns();
+    res.json({ success: true, data: runs, meta: { total: runs.length } });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -42,15 +50,15 @@ router.get('/runs', (req: AuthenticatedRequest, res: Response) => {
 router.post(
   '/calculate',
   requireRole(['Admin', 'Payroll Manager', 'Super Admin']),
-  (req: AuthenticatedRequest, res: Response, next) => {
+  async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const { monthYear, targetEmployeeIds } = CalculatePayrollSchema.parse(req.body);
       const repo = getRepository(req.user?.orgId, req.user?.role);
 
-      const result = calculateMonthlyPayroll(repo, monthYear, targetEmployeeIds);
-      repo.savePayrollRun(result.payrollRun, result.payslips);
+      const result = await calculateMonthlyPayroll(repo, monthYear, targetEmployeeIds);
+      await repo.savePayrollRun(result.payrollRun, result.payslips);
 
-      logAuditEvent(req, {
+      await logAuditEvent(req, {
         action: 'EXECUTE_PAYROLL_CALCULATION',
         module: 'payroll',
         recordName: `Monthly Run ${monthYear} (Gross: ₹${result.summary.totalGrossPay.toLocaleString()}, Net: ₹${result.summary.totalNetPay.toLocaleString()})`,
@@ -72,25 +80,24 @@ router.post(
 router.post(
   '/runs/:id/approve',
   requireRole(['Admin', 'Payroll Manager', 'Super Admin']),
-  (req: AuthenticatedRequest, res: Response, next) => {
+  async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const repo = getRepository(req.user?.orgId, req.user?.role);
-      const runs = repo.getPayrollRuns();
-      const run = runs.find((r) => r.id === req.params.id);
+      const updated = await repo.updatePayrollRunStatus(
+        req.params.id,
+        'Approved',
+        req.user?.name || 'Admin',
+        undefined,
+        5
+      );
 
-      if (!run) throw new NotFoundError('Payroll Run');
-
-      run.status = 'Approved';
-      run.approvedBy = req.user?.name || 'Admin';
-      run.currentStep = 5;
-
-      logAuditEvent(req, {
+      await logAuditEvent(req, {
         action: 'APPROVE_PAYROLL_RUN',
         module: 'payroll',
-        recordName: `Payroll Run ${run.monthYear}`,
+        recordName: `Payroll Run ${updated.monthYear}`,
       });
 
-      res.json({ success: true, data: run });
+      res.json({ success: true, data: updated });
     } catch (error) {
       next(error);
     }
@@ -103,25 +110,24 @@ router.post(
 router.post(
   '/runs/:id/disburse',
   requireRole(['Admin', 'Payroll Manager', 'Super Admin']),
-  (req: AuthenticatedRequest, res: Response, next) => {
+  async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const repo = getRepository(req.user?.orgId, req.user?.role);
-      const runs = repo.getPayrollRuns();
-      const run = runs.find((r) => r.id === req.params.id);
+      const updated = await repo.updatePayrollRunStatus(
+        req.params.id,
+        'Disbursed',
+        undefined,
+        new Date().toISOString().split('T')[0],
+        6
+      );
 
-      if (!run) throw new NotFoundError('Payroll Run');
-
-      run.status = 'Disbursed';
-      run.processedDate = new Date().toISOString().split('T')[0];
-      run.currentStep = 6;
-
-      logAuditEvent(req, {
+      await logAuditEvent(req, {
         action: 'DISBURSE_PAYROLL_SALARIES',
         module: 'payroll',
-        recordName: `Disbursed ${run.totalEmployees} salaries for ${run.monthYear}`,
+        recordName: `Disbursed ${updated.totalEmployees} salaries for ${updated.monthYear}`,
       });
 
-      res.json({ success: true, data: run });
+      res.json({ success: true, data: updated });
     } catch (error) {
       next(error);
     }
@@ -131,16 +137,20 @@ router.post(
 /**
  * GET /api/v1/payroll/payslips
  */
-router.get('/payslips', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const payrollRunId = req.query.payrollRunId as string | undefined;
-  const payslips = repo.getPayslips(payrollRunId);
+router.get('/payslips', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const payrollRunId = req.query.payrollRunId as string | undefined;
+    const payslips = await repo.getPayslips(payrollRunId);
 
-  res.json({
-    success: true,
-    data: payslips,
-    meta: { total: payslips.length },
-  });
+    res.json({
+      success: true,
+      data: payslips,
+      meta: { total: payslips.length },
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;

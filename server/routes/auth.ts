@@ -2,13 +2,31 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { config } from '../config';
-import { db } from '../db/store';
+import { prisma } from '../db/prisma';
 import { AuthenticatedRequest, JwtUserPayload, UnauthorizedError, AppError } from '../types';
 import { authenticate } from '../middleware/auth';
 import { logAuditEvent } from '../services/audit';
 
 const router = Router();
+
+// Rate limiter for authentication endpoints: max 30 requests per 15 minutes per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Too many authentication attempts. Please try again after 15 minutes.',
+    },
+  },
+});
+
+router.use(authLimiter);
 
 const LoginSchema = z.object({
   email: z.string().email(),
@@ -26,7 +44,10 @@ router.post('/login', async (req, res, next) => {
   try {
     const { email, password } = LoginSchema.parse(req.body);
 
-    const user = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+    });
+
     if (!user || !user.isActive) {
       throw new UnauthorizedError('Invalid email credentials or account inactive.');
     }
@@ -36,13 +57,21 @@ router.post('/login', async (req, res, next) => {
       throw new UnauthorizedError('Invalid password credentials.');
     }
 
+    // Update last login timestamp
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    const userOrgId = user.orgId || 'org-acro';
+
     // Create JWT Claims
     const payload: JwtUserPayload = {
       userId: user.id,
       email: user.email,
-      role: user.role,
-      orgId: user.orgId,
-      employeeId: user.employeeId,
+      role: user.role as any,
+      orgId: userOrgId,
+      employeeId: user.employeeId || undefined,
       name: user.name,
     };
 
@@ -56,31 +85,34 @@ router.post('/login', async (req, res, next) => {
       expiresIn: '7d',
     });
 
-    // Store refresh token in store
-    db.refreshTokens.set(refreshToken, {
-      userId: user.id,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      isRevoked: false,
+    // Store refresh token securely in PostgreSQL
+    await prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: refreshToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        isRevoked: false,
+      },
     });
 
     // Set Refresh Token as httpOnly Cookie
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: config.nodeEnv === 'production',
-      sameSite: 'lax',
+      sameSite: config.nodeEnv === 'production' ? 'strict' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    // Also set accessToken cookie for convenience
+    // Set accessToken cookie
     res.cookie('accessToken', accessToken, {
       httpOnly: false,
       secure: config.nodeEnv === 'production',
-      sameSite: 'lax',
+      sameSite: config.nodeEnv === 'production' ? 'strict' : 'lax',
       maxAge: 15 * 60 * 1000,
     });
 
-    logAuditEvent(
-      { user: payload, orgId: user.orgId, headers: req.headers, socket: req.socket } as any,
+    await logAuditEvent(
+      { user: payload, orgId: userOrgId, headers: req.headers, socket: req.socket } as any,
       {
         action: 'USER_LOGIN',
         module: 'auth',
@@ -97,11 +129,11 @@ router.post('/login', async (req, res, next) => {
           email: user.email,
           name: user.name,
           role: user.role,
-          orgId: user.orgId,
-          employeeId: user.employeeId,
-          avatar: user.avatar,
-          department: user.department,
-          designation: user.designation,
+          orgId: userOrgId,
+          employeeId: user.employeeId || undefined,
+          avatar: user.avatar || undefined,
+          department: user.department || undefined,
+          designation: user.designation || undefined,
         },
       },
     });
@@ -120,44 +152,58 @@ router.post('/refresh', async (req, res, next) => {
       throw new UnauthorizedError('Missing refresh token');
     }
 
-    const tokenEntry = db.refreshTokens.get(refreshToken);
+    const tokenEntry = await prisma.refreshToken.findUnique({
+      where: { tokenHash: refreshToken },
+    });
+
     if (!tokenEntry || tokenEntry.isRevoked || tokenEntry.expiresAt < new Date()) {
       throw new UnauthorizedError('Refresh token expired or revoked. Please log in again.');
     }
 
     const decoded = jwt.verify(refreshToken, config.jwt.refreshSecret) as { userId: string };
-    const user = db.users.find((u) => u.id === decoded.userId);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+    });
 
     if (!user || !user.isActive) {
       throw new UnauthorizedError('User account not found or disabled.');
     }
 
-    // Invalidate old token (Rotation)
-    tokenEntry.isRevoked = true;
+    // Invalidate old token (Rotation in PostgreSQL)
+    await prisma.refreshToken.update({
+      where: { id: tokenEntry.id },
+      data: { isRevoked: true },
+    });
+
+    const userOrgId = user.orgId || 'org-acro';
 
     // Issue new pair
     const payload: JwtUserPayload = {
       userId: user.id,
       email: user.email,
-      role: user.role,
-      orgId: user.orgId,
-      employeeId: user.employeeId,
+      role: user.role as any,
+      orgId: userOrgId,
+      employeeId: user.employeeId || undefined,
       name: user.name,
     };
 
     const newAccessToken = jwt.sign(payload, config.jwt.secret, { expiresIn: '15m' });
     const newRefreshToken = jwt.sign({ userId: user.id }, config.jwt.refreshSecret, { expiresIn: '7d' });
 
-    db.refreshTokens.set(newRefreshToken, {
-      userId: user.id,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      isRevoked: false,
+    // Store new refresh token in PostgreSQL
+    await prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: newRefreshToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        isRevoked: false,
+      },
     });
 
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
       secure: config.nodeEnv === 'production',
-      sameSite: 'lax',
+      sameSite: config.nodeEnv === 'production' ? 'strict' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -175,71 +221,89 @@ router.post('/refresh', async (req, res, next) => {
 /**
  * POST /api/v1/auth/logout
  */
-router.post('/logout', authenticate, (req: AuthenticatedRequest, res: Response) => {
-  const refreshToken = req.cookies?.refreshToken;
-  if (refreshToken && db.refreshTokens.has(refreshToken)) {
-    const entry = db.refreshTokens.get(refreshToken);
-    if (entry) entry.isRevoked = true;
+router.post('/logout', authenticate, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+    if (refreshToken) {
+      await prisma.refreshToken.updateMany({
+        where: { tokenHash: refreshToken },
+        data: { isRevoked: true },
+      });
+    }
+
+    res.clearCookie('refreshToken');
+    res.clearCookie('accessToken');
+
+    await logAuditEvent(req, {
+      action: 'USER_LOGOUT',
+      module: 'auth',
+      recordName: req.user?.email || 'User',
+    });
+
+    res.json({
+      success: true,
+      data: { message: 'Successfully logged out.' },
+    });
+  } catch (error) {
+    next(error);
   }
-
-  res.clearCookie('refreshToken');
-  res.clearCookie('accessToken');
-
-  logAuditEvent(req, {
-    action: 'USER_LOGOUT',
-    module: 'auth',
-    recordName: req.user?.email || 'User',
-  });
-
-  res.json({
-    success: true,
-    data: { message: 'Successfully logged out.' },
-  });
 });
 
 /**
  * GET /api/v1/auth/me
  */
-router.get('/me', authenticate, (req: AuthenticatedRequest, res: Response) => {
-  const user = db.users.find((u) => u.id === req.user?.userId);
-  if (!user) {
-    throw new UnauthorizedError('User session not found.');
-  }
+router.get('/me', authenticate, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user?.userId },
+    });
 
-  res.json({
-    success: true,
-    data: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      orgId: user.orgId,
-      employeeId: user.employeeId,
-      avatar: user.avatar,
-      department: user.department,
-      designation: user.designation,
-    },
-  });
+    if (!user) {
+      throw new UnauthorizedError('User session not found.');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        orgId: user.orgId || 'org-acro',
+        employeeId: user.employeeId || undefined,
+        avatar: user.avatar || undefined,
+        department: user.department || undefined,
+        designation: user.designation || undefined,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * POST /api/v1/auth/reset-password
  */
-router.post('/reset-password', (req, res, next) => {
+router.post('/reset-password', async (req, res, next) => {
   try {
     const { email } = ResetPasswordRequestSchema.parse(req.body);
-    const user = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+    });
 
     if (user) {
       const resetToken = jwt.sign({ userId: user.id }, config.jwt.secret, { expiresIn: '1h' });
-      db.passwordResetTokens.set(resetToken, {
-        userId: user.id,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-        isUsed: false,
+
+      await prisma.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: resetToken,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          isUsed: false,
+        },
       });
 
-      // Email interface stub
-      console.log(`[Sqbe HRMS Auth] Password reset link sent to ${email}: /auth/reset?token=${resetToken}`);
+      console.log(`[Sqbe HRMS Auth] Password reset link issued for ${email}: /auth/reset?token=${resetToken}`);
     }
 
     res.json({

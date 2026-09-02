@@ -15,15 +15,19 @@ const UpdateModulesSchema = z.object({
 /**
  * GET /api/v1/admin/organizations
  */
-router.get('/organizations', authenticate, (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const organizations = repo.getOrganizations();
+router.get('/organizations', authenticate, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const organizations = await repo.getOrganizations();
 
-  res.json({
-    success: true,
-    data: organizations,
-    meta: { total: organizations.length },
-  });
+    res.json({
+      success: true,
+      data: organizations,
+      meta: { total: organizations.length },
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -34,15 +38,15 @@ router.patch(
   '/organizations/:orgId/modules',
   authenticate,
   requireRole(['Super Admin']),
-  (req: AuthenticatedRequest, res: Response, next) => {
+  async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const { orgId } = req.params;
       const { enabledModuleIds } = UpdateModulesSchema.parse(req.body);
 
       const repo = getRepository(orgId, 'Super Admin');
-      const updatedOrg = repo.updateOrganizationModules(orgId, enabledModuleIds as ModuleId[]);
+      const updatedOrg = await repo.updateOrganizationModules(orgId, enabledModuleIds as ModuleId[]);
 
-      logAuditEvent(req, {
+      await logAuditEvent(req, {
         action: 'UPDATE_ORGANIZATION_MODULES',
         module: 'admin',
         recordName: `Modules for ${updatedOrg.name}`,
@@ -62,15 +66,19 @@ router.patch(
 /**
  * GET /api/v1/admin/audit-logs
  */
-router.get('/audit-logs', authenticate, (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const logs = repo.getAuditLogs();
+router.get('/audit-logs', authenticate, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const logs = await repo.getAuditLogs();
 
-  res.json({
-    success: true,
-    data: logs,
-    meta: { total: logs.length },
-  });
+    res.json({
+      success: true,
+      data: logs,
+      meta: { total: logs.length },
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;

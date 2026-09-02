@@ -7,23 +7,27 @@ import { ModuleId } from '../../src/types';
  * Middleware: Verify that the specified SaaS module is enabled for the organization
  */
 export function requireModule(moduleId: ModuleId) {
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      return next(new UnauthorizedError());
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) {
+        return next(new UnauthorizedError());
+      }
+
+      // Super Admin has unrestricted access to all modules
+      if (req.user.role === 'Super Admin' || req.user.orgId === 'all') {
+        return next();
+      }
+
+      const repo = getRepository(req.user.orgId, req.user.role);
+      const isEnabled = await repo.isModuleEnabled(moduleId);
+
+      if (!isEnabled) {
+        return next(new ModuleDisabledError(moduleId));
+      }
+
+      next();
+    } catch (error) {
+      next(error);
     }
-
-    // Super Admin has unrestricted access to all modules
-    if (req.user.role === 'Super Admin' || req.user.orgId === 'all') {
-      return next();
-    }
-
-    const repo = getRepository(req.user.orgId, req.user.role);
-    const isEnabled = repo.isModuleEnabled(moduleId);
-
-    if (!isEnabled) {
-      return next(new ModuleDisabledError(moduleId));
-    }
-
-    next();
   };
 }

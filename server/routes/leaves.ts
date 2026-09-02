@@ -29,32 +29,36 @@ const CreateLeaveSchema = z.object({
 /**
  * GET /api/v1/leaves
  */
-router.get('/', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const leaves = repo.getLeaveRequests();
+router.get('/', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const leaves = await repo.getLeaveRequests();
 
-  res.json({
-    success: true,
-    data: leaves,
-    meta: { total: leaves.length },
-  });
+    res.json({
+      success: true,
+      data: leaves,
+      meta: { total: leaves.length },
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * POST /api/v1/leaves
  */
-router.post('/', (req: AuthenticatedRequest, res: Response, next) => {
+router.post('/', async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const parsed = CreateLeaveSchema.parse(req.body);
     const repo = getRepository(req.user?.orgId, req.user?.role);
 
     const employeeId = parsed.employeeId || req.user?.employeeId || 'emp-acro-104';
-    const employee = repo.getEmployeeById(employeeId);
+    const employee = await repo.getEmployeeById(employeeId);
 
     const empName = parsed.employeeName || (employee ? `${employee.firstName} ${employee.lastName}`.trim() : req.user?.name || 'Employee');
     const dept = parsed.department || (employee ? employee.department : 'Engineering');
 
-    const created = repo.createLeaveRequest({
+    const created = await repo.createLeaveRequest({
       employeeId,
       employeeName: empName,
       department: dept,
@@ -66,7 +70,7 @@ router.post('/', (req: AuthenticatedRequest, res: Response, next) => {
       appliedDate: new Date().toISOString().split('T')[0],
     });
 
-    logAuditEvent(req, {
+    await logAuditEvent(req, {
       action: 'SUBMIT_LEAVE_REQUEST',
       module: 'leave',
       recordName: `${empName} (${parsed.leaveType}, ${parsed.days} days)`,
@@ -87,14 +91,14 @@ router.post('/', (req: AuthenticatedRequest, res: Response, next) => {
 router.patch(
   '/:id/status',
   requireRole(['Admin', 'HR Manager', 'Manager', 'Team Lead', 'Super Admin']),
-  (req: AuthenticatedRequest, res: Response, next) => {
+  async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const { status } = z.object({ status: z.enum(['Approved', 'Rejected']) }).parse(req.body);
       const repo = getRepository(req.user?.orgId, req.user?.role);
 
-      const updated = repo.updateLeaveRequestStatus(req.params.id, status, req.user?.name || 'Manager');
+      const updated = await repo.updateLeaveRequestStatus(req.params.id, status, req.user?.name || 'Manager');
 
-      logAuditEvent(req, {
+      await logAuditEvent(req, {
         action: `LEAVE_${status.toUpperCase()}`,
         module: 'leave',
         recordName: `Leave ID ${req.params.id} for ${updated.employeeName}`,

@@ -10,25 +10,27 @@ router.use(authenticate);
 /**
  * GET /api/v1/notifications
  */
-router.get('/', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const notifications = repo.getNotifications();
-  res.json({ success: true, data: notifications, meta: { total: notifications.length } });
+router.get('/', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const notifications = await repo.getNotifications();
+    res.json({ success: true, data: notifications, meta: { total: notifications.length } });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * PATCH /api/v1/notifications/:id/read
  */
-router.patch('/:id/read', (req: AuthenticatedRequest, res: Response) => {
-  const repo = getRepository(req.user?.orgId, req.user?.role);
-  const notifications = repo.getNotifications();
-  const notif = notifications.find((n) => n.id === req.params.id);
-
-  if (notif) {
-    notif.isRead = true;
+router.patch('/:id/read', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const repo = getRepository(req.user?.orgId, req.user?.role);
+    const notif = await repo.markNotificationRead(req.params.id);
+    res.json({ success: true, data: notif });
+  } catch (error) {
+    next(error);
   }
-
-  res.json({ success: true, data: notif });
 });
 
 export default router;
